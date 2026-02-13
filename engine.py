@@ -18,6 +18,9 @@ def init_state() -> dict:
             "resolution_alpha": 0.45,
             "expertise_alpha": 0.45,
             "goal_alpha": 0.25,
+            "decompose_min_complexity": 0.80,
+            "decompose_urgent_min_complexity": 0.90,
+            "decompose_max_ambiguity": 0.70,
         },
     }
 
@@ -53,6 +56,9 @@ def _goal_targets(context: dict, decision: dict) -> dict:
         target_efficiency += 0.05
     elif decision.get("action") == "act_clarify":
         target_accuracy += 0.03
+    elif decision.get("action") == "act_decompose":
+        target_accuracy += 0.04
+        target_efficiency += 0.01
 
     return {
         "efficiency": _clamp01(target_efficiency),
@@ -73,6 +79,10 @@ ACTIONS = {
         "efficiency": 0.25,
         "accuracy": lambda cx: _clamp01(0.30 + 0.90 * cx),
     },
+    "act_decompose": {
+        "efficiency": 0.45,
+        "accuracy": lambda cx: _clamp01(0.55 + 0.35 * cx),
+    },
 }
 
 
@@ -83,6 +93,11 @@ def step(context: dict, state: dict) -> dict:
     urgency_alpha = float(params.get("urgency_alpha", 0.60))
     resolution_alpha = float(params.get("resolution_alpha", 0.45))
     expertise_alpha = float(params.get("expertise_alpha", 0.45))
+    decompose_min_complexity = float(params.get("decompose_min_complexity", 0.80))
+    decompose_urgent_min_complexity = float(
+        params.get("decompose_urgent_min_complexity", 0.90)
+    )
+    decompose_max_ambiguity = float(params.get("decompose_max_ambiguity", 0.70))
 
     target_u = 1.0 if context.get("urgent") else 0.0
     mods["urgency"] = _clamp01(
@@ -92,6 +107,7 @@ def step(context: dict, state: dict) -> dict:
     cx = float(context.get("complexity", 0.3))
     ambiguity = float(context.get("ambiguity", 0.0))
     expertise = float(context.get("expertise", 0.5))
+    urgent_flag = bool(context.get("urgent", False))
 
     mods["resolution"] = _clamp01(
         (1.0 - resolution_alpha) * float(mods.get("resolution", 0.4))
@@ -125,8 +141,21 @@ def step(context: dict, state: dict) -> dict:
             score += 0.35 * u + 0.25 * (1.0 - ambiguity) + 0.15 * ux - 0.20 * cx
         elif action == "act_search":
             score += 0.35 * cx + 0.20 * res - 0.15 * u
+        elif action == "act_decompose":
+            score += 0.45 * cx + 0.45 * res + 0.20 * (1.0 - ambiguity) - 0.15 * u
+            score -= 0.25 * ambiguity
+            if cx < 0.45:
+                score -= 0.35
 
         scores[action] = score
+
+    decompose_min = (
+        decompose_urgent_min_complexity if urgent_flag else decompose_min_complexity
+    )
+    if (
+        cx < decompose_min or ambiguity >= decompose_max_ambiguity
+    ) and "act_decompose" in scores:
+        scores["act_decompose"] = -1e9
 
     best_action = max(scores, key=scores.get)
     reason = ""
@@ -134,6 +163,8 @@ def step(context: dict, state: dict) -> dict:
         reason = "Efficiency prevails."
     elif best_action == "act_search":
         reason = "Accuracy prevails."
+    elif best_action == "act_decompose":
+        reason = "Complex task benefits from decomposition."
     else:
         reason = "Ambiguity requires clarification."
 

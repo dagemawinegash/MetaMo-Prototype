@@ -12,7 +12,7 @@ from engine import step as engine_step
 from parser import parse_context
 
 
-Action = Literal["act_respond", "act_search", "act_clarify"]
+Action = Literal["act_respond", "act_search", "act_clarify", "act_decompose"]
 
 
 class GraphState(TypedDict, total=False):
@@ -108,6 +108,13 @@ def node_prompt_shaper(state: GraphState) -> GraphState:
             "You are Qwestor. Ask exactly one short clarifying question. "
             "Do not answer yet. Do not add greetings or self-introductions."
         )
+    elif decision["action"] == "act_decompose":
+        system = (
+            "You are Qwestor. Break the user request into a short numbered plan "
+            "(3-7 concrete steps) with dependencies and execution order. "
+            "Do not provide the full final solution yet. "
+            "Do not add greetings or self-introductions."
+        )
     else:
         depth = "Provide a deeper, structured explanation with examples."
         if complexity >= 0.7:
@@ -143,6 +150,13 @@ def node_simulated_search(state: GraphState) -> GraphState:
 
 
 def node_clarify(state: GraphState) -> GraphState:
+    llm = _llm()
+    prompt = state["system_prompt"] + "\n\nUser query: " + state["query"]
+    out = llm.invoke(prompt)
+    return {"answer": _llm_text(out)}
+
+
+def node_decompose(state: GraphState) -> GraphState:
     llm = _llm()
     prompt = state["system_prompt"] + "\n\nUser query: " + state["query"]
     out = llm.invoke(prompt)
@@ -188,6 +202,7 @@ def build_graph():
     graph.add_node("prompt_shaper", node_prompt_shaper)
     graph.add_node("quick_answer", node_quick_answer)
     graph.add_node("clarify", node_clarify)
+    graph.add_node("decompose", node_decompose)
     graph.add_node("simulated_search", node_simulated_search)
     graph.add_node("research_synthesis", node_research_synthesis)
     graph.add_node("post_update", node_post_update)
@@ -202,12 +217,14 @@ def build_graph():
         {
             "act_respond": "quick_answer",
             "act_clarify": "clarify",
+            "act_decompose": "decompose",
             "act_search": "simulated_search",
         },
     )
 
     graph.add_edge("quick_answer", "post_update")
     graph.add_edge("clarify", "post_update")
+    graph.add_edge("decompose", "post_update")
     graph.add_edge("simulated_search", "research_synthesis")
     graph.add_edge("research_synthesis", "post_update")
     graph.add_edge("post_update", END)

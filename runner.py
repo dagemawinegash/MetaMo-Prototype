@@ -9,7 +9,7 @@ def main() -> None:
 
     sessions = [
         {
-            "name": "Session - 10 turn mixed stress",
+            "name": "Session A - 10 turn mixed stress",
             "queries": [
                 "What is the capital of France?",
                 "Quickly tell me the capital of France!",
@@ -22,7 +22,22 @@ def main() -> None:
                 "I need an exact, step-by-step detailed guide to compare model calibration methods.",
                 "Which one is better?",
             ],
-        }
+        },
+        {
+            "name": "Session B - 10 turn decomposition stress",
+            "queries": [
+                "Build me a 4-week plan to learn Bayesian machine learning from scratch with milestones.",
+                "Break down the exact migration steps from a Flask monolith to microservices with order and dependencies.",
+                "Give me the first implementation chunk only.",
+                "Design an experiment plan to compare three calibration methods end-to-end.",
+                "Can you help me with this?",
+                "Create a project roadmap for integrating MetaMo into Qwestor backend and frontend in phases.",
+                "Now split the roadmap into weekly deliverables and risks.",
+                "Quickly tell me the top 3 priorities only.",
+                "I need a structured sequence for evaluating hallucination reduction techniques.",
+                "Which approach should I start with first?",
+            ],
+        },
     ]
 
     for session in sessions:
