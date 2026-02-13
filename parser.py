@@ -45,8 +45,9 @@ def _parse_with_gemini(query: str, api_key: str, model: str) -> dict[str, Any] |
 
         system = (
             "Return JSON only (no markdown). "
-            'Schema: {"urgent": boolean, "complexity": number}. '
-            "Rules: complexity is 0..1."
+            'Schema: {"urgent": boolean, "complexity": number, "ambiguity": number, "expertise": number}. '
+            "Rules: complexity, ambiguity, expertise are each 0..1. "
+            "Interpretation: expertise 0 means novice user language, 1 means expert-level user language."
         )
 
         out = llm.invoke([SystemMessage(content=system), HumanMessage(content=query)])
@@ -55,16 +56,25 @@ def _parse_with_gemini(query: str, api_key: str, model: str) -> dict[str, Any] |
 
         urgent = payload.get("urgent", None)
         complexity_raw = payload.get("complexity", None)
+        ambiguity_raw = payload.get("ambiguity", None)
+        expertise_raw = payload.get("expertise", None)
 
         if not isinstance(urgent, bool):
             return None
 
         try:
             complexity = _clamp01(float(complexity_raw))
+            ambiguity = _clamp01(float(ambiguity_raw))
+            expertise = _clamp01(float(expertise_raw))
         except Exception:
             return None
 
-        return {"urgent": urgent, "complexity": complexity}
+        return {
+            "urgent": urgent,
+            "complexity": complexity,
+            "ambiguity": ambiguity,
+            "expertise": expertise,
+        }
 
     except Exception:
         return None

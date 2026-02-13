@@ -12,7 +12,7 @@ from engine import step as engine_step
 from parser import parse_context
 
 
-Action = Literal["act_respond", "act_search"]
+Action = Literal["act_respond", "act_search", "act_clarify"]
 
 
 class GraphState(TypedDict, total=False):
@@ -91,17 +91,31 @@ def node_prompt_shaper(state: GraphState) -> GraphState:
     ctx = state["context"]
 
     urgency = float(decision.get("urgency", 0.0))
+    expertise = float(decision.get("user_expertise", 0.5))
     complexity = float(ctx.get("complexity", 0.3))
 
     if decision["action"] == "act_respond":
         style = "Be concise and direct."
+        if expertise <= 0.4:
+            style += " Use beginner-friendly language."
+        elif expertise >= 0.7:
+            style += " Use expert-level concise wording."
         if urgency >= 0.6:
             style = "Be extremely concise and direct."
         system = f"You are Qwestor. {style} Do not add greetings or self-introductions."
+    elif decision["action"] == "act_clarify":
+        system = (
+            "You are Qwestor. Ask exactly one short clarifying question. "
+            "Do not answer yet. Do not add greetings or self-introductions."
+        )
     else:
         depth = "Provide a deeper, structured explanation with examples."
         if complexity >= 0.7:
             depth = "Provide a deep, structured explanation with clear sections and examples."
+        if expertise <= 0.4:
+            depth += " Keep terminology beginner-friendly."
+        elif expertise >= 0.7:
+            depth += " You can use precise technical terminology."
         system = f"You are Qwestor. {depth} Do not add greetings or self-introductions."
 
     return {"system_prompt": system}
@@ -126,6 +140,13 @@ def node_simulated_search(state: GraphState) -> GraphState:
         f"Finding 3: Common pitfalls and clarifications for '{q}'.",
     ]
     return {"findings": findings}
+
+
+def node_clarify(state: GraphState) -> GraphState:
+    llm = _llm()
+    prompt = state["system_prompt"] + "\n\nUser query: " + state["query"]
+    out = llm.invoke(prompt)
+    return {"answer": _llm_text(out)}
 
 
 def node_research_synthesis(state: GraphState) -> GraphState:
@@ -166,6 +187,7 @@ def build_graph():
     graph.add_node("engine", node_engine)
     graph.add_node("prompt_shaper", node_prompt_shaper)
     graph.add_node("quick_answer", node_quick_answer)
+    graph.add_node("clarify", node_clarify)
     graph.add_node("simulated_search", node_simulated_search)
     graph.add_node("research_synthesis", node_research_synthesis)
     graph.add_node("post_update", node_post_update)
@@ -179,11 +201,13 @@ def build_graph():
         route_action,
         {
             "act_respond": "quick_answer",
+            "act_clarify": "clarify",
             "act_search": "simulated_search",
         },
     )
 
     graph.add_edge("quick_answer", "post_update")
+    graph.add_edge("clarify", "post_update")
     graph.add_edge("simulated_search", "research_synthesis")
     graph.add_edge("research_synthesis", "post_update")
     graph.add_edge("post_update", END)
