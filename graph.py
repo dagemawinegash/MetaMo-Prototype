@@ -7,6 +7,7 @@ from typing import Any, TypedDict, Literal
 from dotenv import load_dotenv
 
 from engine import init_state as init_engine_state
+from engine import post_update as engine_post_update
 from engine import step as engine_step
 from parser import parse_context
 
@@ -141,6 +142,14 @@ def node_research_synthesis(state: GraphState) -> GraphState:
     return {"answer": _llm_text(out)}
 
 
+def node_post_update(state: GraphState) -> GraphState:
+    engine_state = state.get("engine_state") or init_engine_state()
+    updated_state = engine_post_update(
+        context=state["context"], state=engine_state, decision=state["decision"]
+    )
+    return {"engine_state": updated_state}
+
+
 # -----------------------------
 # Graph builder
 # -----------------------------
@@ -159,6 +168,7 @@ def build_graph():
     graph.add_node("quick_answer", node_quick_answer)
     graph.add_node("simulated_search", node_simulated_search)
     graph.add_node("research_synthesis", node_research_synthesis)
+    graph.add_node("post_update", node_post_update)
 
     graph.set_entry_point("context_parser")
     graph.add_edge("context_parser", "engine")
@@ -173,8 +183,9 @@ def build_graph():
         },
     )
 
-    graph.add_edge("quick_answer", END)
+    graph.add_edge("quick_answer", "post_update")
     graph.add_edge("simulated_search", "research_synthesis")
-    graph.add_edge("research_synthesis", END)
+    graph.add_edge("research_synthesis", "post_update")
+    graph.add_edge("post_update", END)
 
     return graph.compile()
