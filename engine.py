@@ -11,7 +11,8 @@ def _clamp01(value: float) -> float:
 
 def init_state() -> dict:
     return {
-        "goals": {"efficiency": 0.60, "accuracy": 0.70},
+        "goals": {"efficiency": 0.60, "accuracy": 0.70, "help_long": 0.45},
+        "anti_goals": {"hallucinate": 0.35},
         "modulators": {
             "urgency": 0.20,
             "resolution": 0.40,
@@ -29,6 +30,7 @@ def init_state() -> dict:
             "failure_alpha": 0.55,
             "failure_decay": 0.20,
             "goal_alpha": 0.25,
+            "anti_goal_alpha": 0.20,
             "decompose_min_complexity": 0.80,
             "decompose_urgent_min_complexity": 0.90,
             "decompose_max_ambiguity": 0.70,
@@ -44,6 +46,8 @@ def _goal_weights(
     return {
         "efficiency": efficiency_base * (0.70 + 0.60 * urgency),
         "accuracy": accuracy_base * (0.70 - 0.40 * urgency + 0.50 * resolution),
+        "help_long": float(goals["help_long"])
+        * (0.55 + 0.65 * resolution + 0.30 * complexity),
     }
 
 
@@ -60,6 +64,7 @@ def _goal_targets(context: dict, decision: dict) -> dict:
     target_accuracy = (
         0.45 + 0.45 * cx + 0.10 * ambiguity + (0.05 if not urgent else 0.0)
     )
+    target_help_long = 0.30 + 0.55 * cx + 0.15 * (1.0 - ambiguity)
 
     if decision.get("action") == "act_search":
         target_accuracy += 0.05
@@ -70,35 +75,68 @@ def _goal_targets(context: dict, decision: dict) -> dict:
     elif decision.get("action") == "act_decompose":
         target_accuracy += 0.04
         target_efficiency += 0.01
+        target_help_long += 0.06
 
     return {
         "efficiency": _clamp01(target_efficiency),
         "accuracy": _clamp01(target_accuracy),
+        "help_long": _clamp01(target_help_long),
     }
+
+
+def _anti_goal_target(context: dict) -> float:
+    threshold = float(context.get("threshold", 0.3))
+    familiarity = float(context.get("topic_familiarity", 0.5))
+    failure_signal = float(context.get("failure_signal", 0.0))
+    target = (
+        0.15 + 0.55 * threshold + 0.25 * (1.0 - familiarity) + 0.20 * failure_signal
+    )
+    return _clamp01(target)
+
+
+def _hallucination_penalty(action: str, cx: float, ambiguity: float) -> float:
+    base = {
+        "act_respond": 0.90,
+        "act_search": 0.30,
+        "act_clarify": 0.15,
+        "act_decompose": 0.40,
+    }.get(action, 0.50)
+    if action == "act_respond":
+        base += 0.25 * cx + 0.20 * ambiguity
+    elif action == "act_search":
+        base += 0.10 * ambiguity
+    elif action == "act_decompose":
+        base += 0.10 * cx
+    return _clamp01(base)
 
 
 ACTIONS = {
     "act_respond": {
         "efficiency": 1.00,
         "accuracy": lambda cx: _clamp01(1.00 - 1.10 * cx),
+        "help_long": lambda cx: _clamp01(0.25 + 0.20 * cx),
     },
     "act_clarify": {
         "efficiency": 0.65,
         "accuracy": lambda cx: _clamp01(0.55 + 0.25 * cx),
+        "help_long": lambda cx: _clamp01(0.40 + 0.20 * cx),
     },
     "act_search": {
         "efficiency": 0.25,
         "accuracy": lambda cx: _clamp01(0.30 + 0.90 * cx),
+        "help_long": lambda cx: _clamp01(0.55 + 0.35 * cx),
     },
     "act_decompose": {
         "efficiency": 0.45,
         "accuracy": lambda cx: _clamp01(0.55 + 0.35 * cx),
+        "help_long": lambda cx: _clamp01(0.70 + 0.25 * cx),
     },
 }
 
 
 def step(context: dict, state: dict) -> dict:
     goals = state["goals"]
+    anti_goals = state.get("anti_goals", {"hallucinate": 0.35})
     mods = state["modulators"]
     params = state["params"]
     urgency_alpha = float(params.get("urgency_alpha", 0.60))
@@ -160,6 +198,7 @@ def step(context: dict, state: dict) -> dict:
     failure_wariness = float(mods["failure_wariness"])
 
     weights = _goal_weights(goals=goals, urgency=u, resolution=res, complexity=cx)
+    anti_hall = float(anti_goals.get("hallucinate", 0.35))
 
     scores: dict[str, float] = {}
     for action, effects in ACTIONS.items():
@@ -186,6 +225,8 @@ def step(context: dict, state: dict) -> dict:
             score -= 0.25 * ambiguity
             if cx < 0.45:
                 score -= 0.35
+
+        score -= anti_hall * _hallucination_penalty(action, cx=cx, ambiguity=ambiguity)
 
         scores[action] = score
 
@@ -217,17 +258,30 @@ def step(context: dict, state: dict) -> dict:
         "threshold": threshold,
         "topic_familiarity": familiarity,
         "failure_wariness": failure_wariness,
+        "anti_hallucinate": anti_hall,
     }
 
 
 def post_update(context: dict, state: dict, decision: dict) -> dict:
     goals = state["goals"]
+    anti_goals = state.get("anti_goals")
     alpha = float(state["params"].get("goal_alpha", 0.25))
+    anti_alpha = float(state["params"].get("anti_goal_alpha", 0.20))
     targets = _goal_targets(context, decision)
 
     goals["efficiency"] = _blend(
         float(goals["efficiency"]), targets["efficiency"], alpha
     )
     goals["accuracy"] = _blend(float(goals["accuracy"]), targets["accuracy"], alpha)
+    goals["help_long"] = _blend(
+        float(goals.get("help_long", 0.45)), targets["help_long"], alpha
+    )
+
+    if anti_goals is not None:
+        anti_goals["hallucinate"] = _blend(
+            float(anti_goals.get("hallucinate", 0.35)),
+            _anti_goal_target(context),
+            anti_alpha,
+        )
 
     return state

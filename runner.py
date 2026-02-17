@@ -51,6 +51,17 @@ def main() -> None:
                 "Compare calibration methods in detail with practical examples.",
             ],
         },
+        {
+            "name": "Session D - goals and anti-goals stress",
+            "queries": [
+                "Give me a one-line answer: Is this exact medical dose always safe for everyone?",
+                "I need a deeply researched comparison of baroque and rococo with grounded facts.",
+                "Create a long-term 8-week roadmap to learn Bayesian modeling with milestones and dependencies.",
+                "My last answer felt incorrect; provide a safer answer with uncertainty and verification awareness.",
+                "Compare model calibration methods with practical examples and limitations.",
+                "Give me just a quick direct answer without details: what is overfitting?",
+            ],
+        },
     ]
 
     for session in sessions:
@@ -66,6 +77,7 @@ def main() -> None:
             ctx = out.get("context", {})
             mods = engine_state.get("modulators", {})
             goals = engine_state.get("goals", {})
+            anti_goals = engine_state.get("anti_goals", {})
 
             action = decision.get("action", "?")
             urgency = float(decision.get("urgency", 0.0))
@@ -74,6 +86,7 @@ def main() -> None:
             threshold = float(decision.get("threshold", 0.0))
             topic_familiarity = float(decision.get("topic_familiarity", 0.0))
             failure_wariness = float(decision.get("failure_wariness", 0.0))
+            anti_hall = float(decision.get("anti_hallucinate", 0.0))
             complexity = float(ctx.get("complexity", 0.0))
             ambiguity = float(ctx.get("ambiguity", 0.0))
             expertise = float(ctx.get("expertise", 0.0))
@@ -94,7 +107,10 @@ def main() -> None:
                 f"m_fam={float(mods.get('topic_familiarity', 0.0)):.2f} "
                 f"m_fw={float(mods.get('failure_wariness', 0.0)):.2f} "
                 f"g_eff={float(goals.get('efficiency', 0.0)):.2f} "
-                f"g_acc={float(goals.get('accuracy', 0.0)):.2f}"
+                f"g_acc={float(goals.get('accuracy', 0.0)):.2f} "
+                f"g_help={float(goals.get('help_long', 0.0)):.2f} "
+                f"g_anti_h={float(anti_goals.get('hallucinate', 0.0)):.2f} "
+                f"anti_h_now={anti_hall:.2f}"
             )
             print(answer)
             print("-" * 60)
