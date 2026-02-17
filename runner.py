@@ -38,6 +38,19 @@ def main() -> None:
                 "Which approach should I start with first?",
             ],
         },
+        {
+            "name": "Session C - modulators stress",
+            "queries": [
+                "What is the capital of Japan?",
+                "Please quickly tell me the answer.",
+                "Can you help me with this?",
+                "For a medical recommendation, can I definitely take this dosage without side effects?",
+                "I think your previous answer was wrong, verify it before answering.",
+                "Give me a beginner-friendly explanation of backpropagation.",
+                "Provide a deep technical explanation of variational inference assumptions.",
+                "Compare calibration methods in detail with practical examples.",
+            ],
+        },
     ]
 
     for session in sessions:
@@ -58,17 +71,28 @@ def main() -> None:
             urgency = float(decision.get("urgency", 0.0))
             resolution = float(decision.get("resolution", 0.0))
             user_expertise = float(decision.get("user_expertise", 0.0))
+            threshold = float(decision.get("threshold", 0.0))
+            topic_familiarity = float(decision.get("topic_familiarity", 0.0))
+            failure_wariness = float(decision.get("failure_wariness", 0.0))
             complexity = float(ctx.get("complexity", 0.0))
             ambiguity = float(ctx.get("ambiguity", 0.0))
             expertise = float(ctx.get("expertise", 0.0))
+            threshold_signal = float(ctx.get("threshold", 0.0))
+            topic_familiarity_signal = float(ctx.get("topic_familiarity", 0.0))
+            failure_signal = float(ctx.get("failure_signal", 0.0))
             answer = out.get("answer", "")
 
             print(
                 f"{i}. {action} | urgent={ctx.get('urgent')} "
                 f"cx={complexity:.2f} amb={ambiguity:.2f} exp={expertise:.2f} "
+                f"thr_s={threshold_signal:.2f} fam_s={topic_familiarity_signal:.2f} fail_s={failure_signal:.2f} "
                 f"u={urgency:.2f} r={resolution:.2f} ux={user_expertise:.2f} "
+                f"thr={threshold:.2f} fam={topic_familiarity:.2f} fw={failure_wariness:.2f} "
                 f"m_r={float(mods.get('resolution', 0.0)):.2f} "
                 f"m_ux={float(mods.get('user_expertise', 0.0)):.2f} "
+                f"m_thr={float(mods.get('threshold', 0.0)):.2f} "
+                f"m_fam={float(mods.get('topic_familiarity', 0.0)):.2f} "
+                f"m_fw={float(mods.get('failure_wariness', 0.0)):.2f} "
                 f"g_eff={float(goals.get('efficiency', 0.0)):.2f} "
                 f"g_acc={float(goals.get('accuracy', 0.0)):.2f}"
             )

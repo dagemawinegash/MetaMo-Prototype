@@ -45,9 +45,12 @@ def _parse_with_gemini(query: str, api_key: str, model: str) -> dict[str, Any] |
 
         system = (
             "Return JSON only (no markdown). "
-            'Schema: {"urgent": boolean, "complexity": number, "ambiguity": number, "expertise": number}. '
-            "Rules: complexity, ambiguity, expertise are each 0..1. "
+            'Schema: {"urgent": boolean, "complexity": number, "ambiguity": number, "expertise": number, "threshold": number, "topic_familiarity": number, "failure_signal": number}. '
+            "Rules: complexity, ambiguity, expertise, threshold, topic_familiarity, failure_signal are each 0..1. "
             "Interpretation: expertise 0 means novice user language, 1 means expert-level user language."
+            "Interpretation: threshold is risk/safety sensitivity (higher means more caution needed). "
+            "Interpretation: topic_familiarity is how likely the assistant is to already know this topic well (higher means more familiar). "
+            "Interpretation: failure_signal is high when the user indicates previous answer/correction problems."
         )
 
         out = llm.invoke([SystemMessage(content=system), HumanMessage(content=query)])
@@ -58,6 +61,9 @@ def _parse_with_gemini(query: str, api_key: str, model: str) -> dict[str, Any] |
         complexity_raw = payload.get("complexity", None)
         ambiguity_raw = payload.get("ambiguity", None)
         expertise_raw = payload.get("expertise", None)
+        threshold_raw = payload.get("threshold", 0.3)
+        topic_familiarity_raw = payload.get("topic_familiarity", 0.5)
+        failure_signal_raw = payload.get("failure_signal", 0.0)
 
         if not isinstance(urgent, bool):
             return None
@@ -66,6 +72,9 @@ def _parse_with_gemini(query: str, api_key: str, model: str) -> dict[str, Any] |
             complexity = _clamp01(float(complexity_raw))
             ambiguity = _clamp01(float(ambiguity_raw))
             expertise = _clamp01(float(expertise_raw))
+            threshold = _clamp01(float(threshold_raw))
+            topic_familiarity = _clamp01(float(topic_familiarity_raw))
+            failure_signal = _clamp01(float(failure_signal_raw))
         except Exception:
             return None
 
@@ -74,6 +83,9 @@ def _parse_with_gemini(query: str, api_key: str, model: str) -> dict[str, Any] |
             "complexity": complexity,
             "ambiguity": ambiguity,
             "expertise": expertise,
+            "threshold": threshold,
+            "topic_familiarity": topic_familiarity,
+            "failure_signal": failure_signal,
         }
 
     except Exception:

@@ -12,11 +12,22 @@ def _clamp01(value: float) -> float:
 def init_state() -> dict:
     return {
         "goals": {"efficiency": 0.60, "accuracy": 0.70},
-        "modulators": {"urgency": 0.20, "resolution": 0.40, "user_expertise": 0.50},
+        "modulators": {
+            "urgency": 0.20,
+            "resolution": 0.40,
+            "user_expertise": 0.50,
+            "threshold": 0.30,
+            "topic_familiarity": 0.50,
+            "failure_wariness": 0.10,
+        },
         "params": {
             "urgency_alpha": 0.60,
             "resolution_alpha": 0.45,
             "expertise_alpha": 0.45,
+            "threshold_alpha": 0.40,
+            "familiarity_alpha": 0.35,
+            "failure_alpha": 0.55,
+            "failure_decay": 0.20,
             "goal_alpha": 0.25,
             "decompose_min_complexity": 0.80,
             "decompose_urgent_min_complexity": 0.90,
@@ -93,6 +104,10 @@ def step(context: dict, state: dict) -> dict:
     urgency_alpha = float(params.get("urgency_alpha", 0.60))
     resolution_alpha = float(params.get("resolution_alpha", 0.45))
     expertise_alpha = float(params.get("expertise_alpha", 0.45))
+    threshold_alpha = float(params.get("threshold_alpha", 0.40))
+    familiarity_alpha = float(params.get("familiarity_alpha", 0.35))
+    failure_alpha = float(params.get("failure_alpha", 0.55))
+    failure_decay = float(params.get("failure_decay", 0.20))
     decompose_min_complexity = float(params.get("decompose_min_complexity", 0.80))
     decompose_urgent_min_complexity = float(
         params.get("decompose_urgent_min_complexity", 0.90)
@@ -107,6 +122,9 @@ def step(context: dict, state: dict) -> dict:
     cx = float(context.get("complexity", 0.3))
     ambiguity = float(context.get("ambiguity", 0.0))
     expertise = float(context.get("expertise", 0.5))
+    threshold_signal = float(context.get("threshold", 0.3))
+    familiarity_signal = float(context.get("topic_familiarity", 0.5))
+    failure_signal = float(context.get("failure_signal", 0.0))
     urgent_flag = bool(context.get("urgent", False))
 
     mods["resolution"] = _clamp01(
@@ -119,9 +137,27 @@ def step(context: dict, state: dict) -> dict:
         + expertise_alpha * expertise
     )
 
+    mods["threshold"] = _clamp01(
+        (1.0 - threshold_alpha) * float(mods.get("threshold", 0.3))
+        + threshold_alpha * threshold_signal
+    )
+
+    mods["topic_familiarity"] = _clamp01(
+        (1.0 - familiarity_alpha) * float(mods.get("topic_familiarity", 0.5))
+        + familiarity_alpha * familiarity_signal
+    )
+
+    mods["failure_wariness"] = _clamp01(
+        (1.0 - failure_decay) * float(mods.get("failure_wariness", 0.1))
+        + failure_alpha * failure_signal
+    )
+
     u = float(mods["urgency"])
     res = float(mods["resolution"])
     ux = float(mods["user_expertise"])
+    threshold = float(mods["threshold"])
+    familiarity = float(mods["topic_familiarity"])
+    failure_wariness = float(mods["failure_wariness"])
 
     weights = _goal_weights(goals=goals, urgency=u, resolution=res, complexity=cx)
 
@@ -136,11 +172,15 @@ def step(context: dict, state: dict) -> dict:
             score += float(weight) * float(rel)
 
         if action == "act_clarify":
-            score += 0.90 * ambiguity - 0.35 * ux - 0.15 * u
+            score += 0.90 * ambiguity - 0.35 * ux - 0.15 * u + 0.20 * threshold
         elif action == "act_respond":
             score += 0.35 * u + 0.25 * (1.0 - ambiguity) + 0.15 * ux - 0.20 * cx
+            score += 0.20 * familiarity - 0.35 * threshold - 0.30 * failure_wariness
         elif action == "act_search":
             score += 0.35 * cx + 0.20 * res - 0.15 * u
+            score += (
+                0.35 * threshold + 0.35 * (1.0 - familiarity) + 0.30 * failure_wariness
+            )
         elif action == "act_decompose":
             score += 0.45 * cx + 0.45 * res + 0.20 * (1.0 - ambiguity) - 0.15 * u
             score -= 0.25 * ambiguity
@@ -174,6 +214,9 @@ def step(context: dict, state: dict) -> dict:
         "urgency": u,
         "resolution": res,
         "user_expertise": ux,
+        "threshold": threshold,
+        "topic_familiarity": familiarity,
+        "failure_wariness": failure_wariness,
     }
 
 
