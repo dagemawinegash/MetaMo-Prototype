@@ -12,7 +12,13 @@ from engine import step as engine_step
 from parser import parse_context
 
 
-Action = Literal["act_respond", "act_search", "act_clarify", "act_decompose"]
+Action = Literal[
+    "act_respond",
+    "act_search",
+    "act_verify",
+    "act_clarify",
+    "act_decompose",
+]
 
 
 class GraphState(TypedDict, total=False):
@@ -115,6 +121,13 @@ def node_prompt_shaper(state: GraphState) -> GraphState:
             "Do not provide the full final solution yet. "
             "Do not add greetings or self-introductions."
         )
+    elif decision["action"] == "act_verify":
+        system = (
+            "You are Qwestor. Verify factual claims carefully before finalizing the answer. "
+            "Use the provided notes as evidence, explicitly state uncertainty when needed, "
+            "and avoid unsupported claims. "
+            "Do not add greetings or self-introductions."
+        )
     else:
         depth = "Provide a deeper, structured explanation with examples."
         if complexity >= 0.7:
@@ -177,6 +190,20 @@ def node_research_synthesis(state: GraphState) -> GraphState:
     return {"answer": _llm_text(out)}
 
 
+def node_verify_synthesis(state: GraphState) -> GraphState:
+    llm = _llm()
+    findings_text = "\n".join(f"- {f}" for f in state.get("findings", []))
+    prompt = (
+        state["system_prompt"]
+        + "\n\nVerification notes:\n"
+        + findings_text
+        + "\n\nUser query: "
+        + state["query"]
+    )
+    out = llm.invoke(prompt)
+    return {"answer": _llm_text(out)}
+
+
 def node_post_update(state: GraphState) -> GraphState:
     engine_state = state.get("engine_state") or init_engine_state()
     updated_state = engine_post_update(
@@ -205,6 +232,7 @@ def build_graph():
     graph.add_node("decompose", node_decompose)
     graph.add_node("simulated_search", node_simulated_search)
     graph.add_node("research_synthesis", node_research_synthesis)
+    graph.add_node("verify_synthesis", node_verify_synthesis)
     graph.add_node("post_update", node_post_update)
 
     graph.set_entry_point("context_parser")
@@ -219,14 +247,26 @@ def build_graph():
             "act_clarify": "clarify",
             "act_decompose": "decompose",
             "act_search": "simulated_search",
+            "act_verify": "simulated_search",
         },
     )
 
     graph.add_edge("quick_answer", "post_update")
     graph.add_edge("clarify", "post_update")
     graph.add_edge("decompose", "post_update")
-    graph.add_edge("simulated_search", "research_synthesis")
+    graph.add_conditional_edges(
+        "simulated_search",
+        route_action,
+        {
+            "act_search": "research_synthesis",
+            "act_verify": "verify_synthesis",
+            "act_respond": "research_synthesis",
+            "act_clarify": "research_synthesis",
+            "act_decompose": "research_synthesis",
+        },
+    )
     graph.add_edge("research_synthesis", "post_update")
+    graph.add_edge("verify_synthesis", "post_update")
     graph.add_edge("post_update", END)
 
     return graph.compile()

@@ -68,6 +68,9 @@ def _goal_targets(context: dict, decision: dict) -> dict:
 
     if decision.get("action") == "act_search":
         target_accuracy += 0.05
+    elif decision.get("action") == "act_verify":
+        target_accuracy += 0.06
+        target_help_long += 0.02
     elif decision.get("action") == "act_respond":
         target_efficiency += 0.05
     elif decision.get("action") == "act_clarify":
@@ -98,6 +101,7 @@ def _hallucination_penalty(action: str, cx: float, ambiguity: float) -> float:
     base = {
         "act_respond": 0.90,
         "act_search": 0.30,
+        "act_verify": 0.12,
         "act_clarify": 0.15,
         "act_decompose": 0.40,
     }.get(action, 0.50)
@@ -125,6 +129,11 @@ ACTIONS = {
         "efficiency": 0.25,
         "accuracy": lambda cx: _clamp01(0.30 + 0.90 * cx),
         "help_long": lambda cx: _clamp01(0.55 + 0.35 * cx),
+    },
+    "act_verify": {
+        "efficiency": 0.35,
+        "accuracy": lambda cx: _clamp01(0.75 + 0.20 * cx),
+        "help_long": lambda cx: _clamp01(0.50 + 0.20 * cx),
     },
     "act_decompose": {
         "efficiency": 0.45,
@@ -197,6 +206,11 @@ def step(context: dict, state: dict) -> dict:
     familiarity = float(mods["topic_familiarity"])
     failure_wariness = float(mods["failure_wariness"])
 
+    confidence = _clamp01(
+        0.55 * familiarity + 0.25 * (1.0 - ambiguity) + 0.20 * (1.0 - cx)
+    )
+    low_confidence = _clamp01(1.0 - confidence)
+
     weights = _goal_weights(goals=goals, urgency=u, resolution=res, complexity=cx)
     anti_hall = float(anti_goals.get("hallucinate", 0.35))
 
@@ -220,9 +234,14 @@ def step(context: dict, state: dict) -> dict:
             score += (
                 0.35 * threshold + 0.35 * (1.0 - familiarity) + 0.30 * failure_wariness
             )
+        elif action == "act_verify":
+            score += 0.65 * threshold + 0.75 * low_confidence + 0.35 * failure_wariness
+            score += 0.15 * cx - 0.20 * u - 0.10 * ambiguity
         elif action == "act_decompose":
             score += 0.45 * cx + 0.45 * res + 0.20 * (1.0 - ambiguity) - 0.15 * u
             score -= 0.25 * ambiguity
+            if cx >= 0.75 and ambiguity <= 0.45:
+                score += 0.45
             if cx < 0.45:
                 score -= 0.35
 
@@ -238,12 +257,42 @@ def step(context: dict, state: dict) -> dict:
     ) and "act_decompose" in scores:
         scores["act_decompose"] = -1e9
 
+    # clarify vs verify split
+    # very high ambiguity => clarify (missing specifics)
+    # medium ambiguity + high risk/low confidence => verify
+    if "act_verify" in scores:
+        if ambiguity >= 0.85:
+            scores["act_verify"] = -1e9
+        elif not (
+            threshold >= 0.45 or low_confidence >= 0.45 or failure_wariness >= 0.35
+        ):
+            scores["act_verify"] = -1e9
+
+    # keep simple clear prompts on direct response using current-turn risk signals
+    # to avoid over-carrying caution from previous risky turns
+    if (
+        cx <= 0.30
+        and ambiguity <= 0.30
+        and threshold_signal <= 0.25
+        and failure_signal <= 0.25
+        and familiarity_signal >= 0.70
+        and low_confidence <= 0.35
+    ):
+        if "act_verify" in scores:
+            scores["act_verify"] = -1e9
+        if "act_search" in scores:
+            scores["act_search"] = -1e9
+        if "act_respond" in scores:
+            scores["act_respond"] += 0.60
+
     best_action = max(scores, key=scores.get)
     reason = ""
     if best_action == "act_respond":
         reason = "Efficiency prevails."
     elif best_action == "act_search":
         reason = "Accuracy prevails."
+    elif best_action == "act_verify":
+        reason = "Risk or low confidence requires verification."
     elif best_action == "act_decompose":
         reason = "Complex task benefits from decomposition."
     else:
@@ -259,6 +308,8 @@ def step(context: dict, state: dict) -> dict:
         "topic_familiarity": familiarity,
         "failure_wariness": failure_wariness,
         "anti_hallucinate": anti_hall,
+        "confidence": confidence,
+        "low_confidence": low_confidence,
     }
 
 

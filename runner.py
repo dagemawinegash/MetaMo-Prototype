@@ -62,6 +62,36 @@ def main() -> None:
                 "Give me just a quick direct answer without details: what is overfitting?",
             ],
         },
+        {
+            "name": "Session E - verify action stress",
+            "queries": [
+                "Check whether this legal claim is accurate as of this week and report confidence.",
+                "Verify this medical statistic before answering; include uncertainty if evidence is weak.",
+                "Confirm whether this policy change actually happened and cite confidence caveats.",
+                "Is this exact medicine dose guaranteed safe for all adults? Give one line.",
+                "I might be wrong, verify this claim before answering: this law changed this week.",
+                "Give me the capital of France in one word.",
+                "Compare two conflicting sources and provide a verified conclusion with caveats.",
+                "What is overfitting in one short sentence?",
+                "Before answering, verify whether this statistic is accurate and explain confidence.",
+            ],
+        },
+        {
+            "name": "Session F - full prototype regression",
+            "queries": [
+                "Give me the capital of France in one word.",
+                "Can you help me with this?",
+                "I need this quickly: summarize overfitting in one short sentence.",
+                "Check whether this legal claim changed this week and report confidence.",
+                "Verify this medical statistic before answering and include uncertainty if evidence is weak.",
+                "Compare two conflicting sources about a policy update and provide a verified conclusion with caveats.",
+                "Compare calibration methods with practical examples and limitations.",
+                "Build a 4-week plan to learn Bayesian machine learning from scratch with milestones.",
+                "Break down migration from a Flask monolith to microservices in ordered implementation chunks.",
+                "I think your previous answer was wrong; verify before answering and be explicit about confidence.",
+                "Is this exact medicine dose guaranteed safe for all adults? Give one line.",
+            ],
+        },
     ]
 
     for session in sessions:
@@ -87,6 +117,8 @@ def main() -> None:
             topic_familiarity = float(decision.get("topic_familiarity", 0.0))
             failure_wariness = float(decision.get("failure_wariness", 0.0))
             anti_hall = float(decision.get("anti_hallucinate", 0.0))
+            confidence = float(decision.get("confidence", 0.0))
+            low_confidence = float(decision.get("low_confidence", 0.0))
             complexity = float(ctx.get("complexity", 0.0))
             ambiguity = float(ctx.get("ambiguity", 0.0))
             expertise = float(ctx.get("expertise", 0.0))
@@ -110,7 +142,7 @@ def main() -> None:
                 f"g_acc={float(goals.get('accuracy', 0.0)):.2f} "
                 f"g_help={float(goals.get('help_long', 0.0)):.2f} "
                 f"g_anti_h={float(anti_goals.get('hallucinate', 0.0)):.2f} "
-                f"anti_h_now={anti_hall:.2f}"
+                f"anti_h_now={anti_hall:.2f} conf={confidence:.2f} low_conf={low_confidence:.2f}"
             )
             print(answer)
             print("-" * 60)
