@@ -11,7 +11,13 @@ def _clamp01(value: float) -> float:
 
 def init_state() -> dict:
     return {
-        "goals": {"efficiency": 0.60, "accuracy": 0.70, "help_long": 0.45},
+        "goals": {
+            "efficiency": 0.60,
+            "accuracy": 0.70,
+            "help_long": 0.45,
+            "over_safety": 0.65,
+            "over_honesty": 0.65,
+        },
         "anti_goals": {"hallucinate": 0.35},
         "modulators": {
             "urgency": 0.20,
@@ -20,6 +26,7 @@ def init_state() -> dict:
             "threshold": 0.30,
             "topic_familiarity": 0.50,
             "failure_wariness": 0.10,
+            "securing": 0.30,
         },
         "params": {
             "urgency_alpha": 0.60,
@@ -29,6 +36,7 @@ def init_state() -> dict:
             "familiarity_alpha": 0.35,
             "failure_alpha": 0.55,
             "failure_decay": 0.20,
+            "securing_alpha": 0.45,
             "goal_alpha": 0.25,
             "anti_goal_alpha": 0.20,
             "decompose_min_complexity": 0.80,
@@ -39,15 +47,29 @@ def init_state() -> dict:
 
 
 def _goal_weights(
-    goals: dict, urgency: float, resolution: float, complexity: float
+    goals: dict,
+    urgency: float,
+    resolution: float,
+    complexity: float,
+    threshold: float,
+    securing: float,
+    low_confidence: float,
 ) -> dict:
     efficiency_base = float(goals["efficiency"]) * (1.0 - 0.30 * complexity)
     accuracy_base = float(goals["accuracy"]) * (0.60 + 0.80 * complexity)
+    safety_base = float(goals.get("over_safety", 0.65)) * (
+        0.60 + 0.45 * complexity + 0.55 * threshold + 0.50 * securing
+    )
+    honesty_base = float(goals.get("over_honesty", 0.65)) * (
+        0.60 + 0.60 * low_confidence + 0.30 * threshold
+    )
     return {
         "efficiency": efficiency_base * (0.70 + 0.60 * urgency),
         "accuracy": accuracy_base * (0.70 - 0.40 * urgency + 0.50 * resolution),
         "help_long": float(goals["help_long"])
         * (0.55 + 0.65 * resolution + 0.30 * complexity),
+        "over_safety": safety_base,
+        "over_honesty": honesty_base,
     }
 
 
@@ -65,6 +87,10 @@ def _goal_targets(context: dict, decision: dict) -> dict:
         0.45 + 0.45 * cx + 0.10 * ambiguity + (0.05 if not urgent else 0.0)
     )
     target_help_long = 0.30 + 0.55 * cx + 0.15 * (1.0 - ambiguity)
+    target_over_safety = 0.45 + 0.40 * float(context.get("threshold", 0.3))
+    target_over_honesty = (
+        0.45 + 0.35 * ambiguity + 0.20 * float(context.get("failure_signal", 0.0))
+    )
 
     if decision.get("action") == "act_search":
         target_accuracy += 0.05
@@ -75,15 +101,23 @@ def _goal_targets(context: dict, decision: dict) -> dict:
         target_efficiency += 0.05
     elif decision.get("action") == "act_clarify":
         target_accuracy += 0.03
+        target_over_honesty += 0.04
     elif decision.get("action") == "act_decompose":
         target_accuracy += 0.04
         target_efficiency += 0.01
         target_help_long += 0.06
+    elif decision.get("action") == "act_verify":
+        target_over_safety += 0.05
+        target_over_honesty += 0.06
+    elif decision.get("action") == "act_respond":
+        target_over_safety -= 0.02
 
     return {
         "efficiency": _clamp01(target_efficiency),
         "accuracy": _clamp01(target_accuracy),
         "help_long": _clamp01(target_help_long),
+        "over_safety": _clamp01(target_over_safety),
+        "over_honesty": _clamp01(target_over_honesty),
     }
 
 
@@ -119,26 +153,36 @@ ACTIONS = {
         "efficiency": 1.00,
         "accuracy": lambda cx: _clamp01(1.00 - 1.10 * cx),
         "help_long": lambda cx: _clamp01(0.25 + 0.20 * cx),
+        "over_safety": lambda cx: _clamp01(0.45 - 0.20 * cx),
+        "over_honesty": 0.60,
     },
     "act_clarify": {
         "efficiency": 0.65,
         "accuracy": lambda cx: _clamp01(0.55 + 0.25 * cx),
         "help_long": lambda cx: _clamp01(0.40 + 0.20 * cx),
+        "over_safety": 0.90,
+        "over_honesty": 0.95,
     },
     "act_search": {
         "efficiency": 0.25,
         "accuracy": lambda cx: _clamp01(0.30 + 0.90 * cx),
         "help_long": lambda cx: _clamp01(0.55 + 0.35 * cx),
+        "over_safety": 0.78,
+        "over_honesty": 0.82,
     },
     "act_verify": {
         "efficiency": 0.35,
         "accuracy": lambda cx: _clamp01(0.75 + 0.20 * cx),
         "help_long": lambda cx: _clamp01(0.50 + 0.20 * cx),
+        "over_safety": 0.97,
+        "over_honesty": 0.97,
     },
     "act_decompose": {
         "efficiency": 0.45,
         "accuracy": lambda cx: _clamp01(0.55 + 0.35 * cx),
         "help_long": lambda cx: _clamp01(0.70 + 0.25 * cx),
+        "over_safety": 0.76,
+        "over_honesty": 0.80,
     },
 }
 
@@ -155,6 +199,7 @@ def step(context: dict, state: dict) -> dict:
     familiarity_alpha = float(params.get("familiarity_alpha", 0.35))
     failure_alpha = float(params.get("failure_alpha", 0.55))
     failure_decay = float(params.get("failure_decay", 0.20))
+    securing_alpha = float(params.get("securing_alpha", 0.45))
     decompose_min_complexity = float(params.get("decompose_min_complexity", 0.80))
     decompose_urgent_min_complexity = float(
         params.get("decompose_urgent_min_complexity", 0.90)
@@ -199,20 +244,39 @@ def step(context: dict, state: dict) -> dict:
         + failure_alpha * failure_signal
     )
 
+    securing_target = _clamp01(
+        0.50 * threshold_signal + 0.30 * failure_signal + 0.20 * ambiguity
+    )
+    mods["securing"] = _clamp01(
+        (1.0 - securing_alpha) * float(mods.get("securing", 0.3))
+        + securing_alpha * securing_target
+    )
+
     u = float(mods["urgency"])
     res = float(mods["resolution"])
     ux = float(mods["user_expertise"])
     threshold = float(mods["threshold"])
     familiarity = float(mods["topic_familiarity"])
     failure_wariness = float(mods["failure_wariness"])
+    securing = float(mods["securing"])
 
     confidence = _clamp01(
         0.55 * familiarity + 0.25 * (1.0 - ambiguity) + 0.20 * (1.0 - cx)
     )
     low_confidence = _clamp01(1.0 - confidence)
 
-    weights = _goal_weights(goals=goals, urgency=u, resolution=res, complexity=cx)
+    weights = _goal_weights(
+        goals=goals,
+        urgency=u,
+        resolution=res,
+        complexity=cx,
+        threshold=threshold,
+        securing=securing,
+        low_confidence=low_confidence,
+    )
     anti_hall = float(anti_goals.get("hallucinate", 0.35))
+    over_safety = float(goals.get("over_safety", 0.65))
+    over_honesty = float(goals.get("over_honesty", 0.65))
 
     scores: dict[str, float] = {}
     for action, effects in ACTIONS.items():
@@ -226,17 +290,21 @@ def step(context: dict, state: dict) -> dict:
 
         if action == "act_clarify":
             score += 0.90 * ambiguity - 0.35 * ux - 0.15 * u + 0.20 * threshold
+            score += 0.20 * securing
         elif action == "act_respond":
             score += 0.35 * u + 0.25 * (1.0 - ambiguity) + 0.15 * ux - 0.20 * cx
             score += 0.20 * familiarity - 0.35 * threshold - 0.30 * failure_wariness
+            score -= 0.35 * securing + 0.20 * low_confidence
         elif action == "act_search":
             score += 0.35 * cx + 0.20 * res - 0.15 * u
             score += (
                 0.35 * threshold + 0.35 * (1.0 - familiarity) + 0.30 * failure_wariness
             )
+            score += 0.15 * securing
         elif action == "act_verify":
             score += 0.65 * threshold + 0.75 * low_confidence + 0.35 * failure_wariness
             score += 0.15 * cx - 0.20 * u - 0.10 * ambiguity
+            score += 0.30 * securing
         elif action == "act_decompose":
             score += 0.45 * cx + 0.45 * res + 0.20 * (1.0 - ambiguity) - 0.15 * u
             score -= 0.25 * ambiguity
@@ -246,6 +314,26 @@ def step(context: dict, state: dict) -> dict:
                 score -= 0.35
 
         score -= anti_hall * _hallucination_penalty(action, cx=cx, ambiguity=ambiguity)
+
+        safety_risk = {
+            "act_respond": _clamp01(
+                0.55 + 0.20 * cx + 0.25 * threshold + 0.20 * ambiguity
+            ),
+            "act_search": _clamp01(0.35 + 0.20 * threshold),
+            "act_verify": 0.08,
+            "act_clarify": 0.10,
+            "act_decompose": 0.25,
+        }.get(action, 0.30)
+        honesty_risk = {
+            "act_respond": _clamp01(0.40 + 0.30 * low_confidence + 0.15 * ambiguity),
+            "act_search": 0.18,
+            "act_verify": 0.05,
+            "act_clarify": 0.10,
+            "act_decompose": 0.16,
+        }.get(action, 0.20)
+
+        score -= over_safety * safety_risk * (0.65 + 0.35 * securing)
+        score -= over_honesty * honesty_risk * (0.60 + 0.40 * low_confidence)
 
         scores[action] = score
 
@@ -282,6 +370,8 @@ def step(context: dict, state: dict) -> dict:
             scores["act_verify"] = -1e9
         if "act_search" in scores:
             scores["act_search"] = -1e9
+        if "act_clarify" in scores:
+            scores["act_clarify"] = -1e9
         if "act_respond" in scores:
             scores["act_respond"] += 0.60
 
@@ -307,7 +397,10 @@ def step(context: dict, state: dict) -> dict:
         "threshold": threshold,
         "topic_familiarity": familiarity,
         "failure_wariness": failure_wariness,
+        "securing": securing,
         "anti_hallucinate": anti_hall,
+        "over_safety": over_safety,
+        "over_honesty": over_honesty,
         "confidence": confidence,
         "low_confidence": low_confidence,
     }
@@ -326,6 +419,12 @@ def post_update(context: dict, state: dict, decision: dict) -> dict:
     goals["accuracy"] = _blend(float(goals["accuracy"]), targets["accuracy"], alpha)
     goals["help_long"] = _blend(
         float(goals.get("help_long", 0.45)), targets["help_long"], alpha
+    )
+    goals["over_safety"] = _blend(
+        float(goals.get("over_safety", 0.65)), targets["over_safety"], alpha
+    )
+    goals["over_honesty"] = _blend(
+        float(goals.get("over_honesty", 0.65)), targets["over_honesty"], alpha
     )
 
     if anti_goals is not None:
