@@ -103,6 +103,17 @@ def main() -> None:
                 "Can I rely on this exact statistic without checking sources?",
             ],
         },
+        {
+            "name": "Session H - approach think stress",
+            "queries": [
+                "Think briefly, then explain why validation loss can spike after epoch 5.",
+                "Reflect on two plausible causes of model collapse and give the most likely one.",
+                "What is the capital of France in one word?",
+                "Compare MCMC and variational inference trade-offs in a concise way.",
+                "I need an exact guaranteed legal verdict this week in one line.",
+                "Provide a quick answer, but reason before finalizing if uncertainty exists.",
+            ],
+        },
     ]
 
     for session in sessions:
@@ -128,6 +139,7 @@ def main() -> None:
             topic_familiarity = float(decision.get("topic_familiarity", 0.0))
             failure_wariness = float(decision.get("failure_wariness", 0.0))
             securing = float(decision.get("securing", 0.0))
+            approach = float(decision.get("approach", 0.0))
             anti_hall = float(decision.get("anti_hallucinate", 0.0))
             over_safety = float(decision.get("over_safety", 0.0))
             over_honesty = float(decision.get("over_honesty", 0.0))
@@ -146,13 +158,14 @@ def main() -> None:
                 f"cx={complexity:.2f} amb={ambiguity:.2f} exp={expertise:.2f} "
                 f"thr_s={threshold_signal:.2f} fam_s={topic_familiarity_signal:.2f} fail_s={failure_signal:.2f} "
                 f"u={urgency:.2f} r={resolution:.2f} ux={user_expertise:.2f} "
-                f"thr={threshold:.2f} fam={topic_familiarity:.2f} fw={failure_wariness:.2f} sec={securing:.2f} "
+                f"thr={threshold:.2f} fam={topic_familiarity:.2f} fw={failure_wariness:.2f} sec={securing:.2f} app={approach:.2f} "
                 f"m_r={float(mods.get('resolution', 0.0)):.2f} "
                 f"m_ux={float(mods.get('user_expertise', 0.0)):.2f} "
                 f"m_thr={float(mods.get('threshold', 0.0)):.2f} "
                 f"m_fam={float(mods.get('topic_familiarity', 0.0)):.2f} "
                 f"m_fw={float(mods.get('failure_wariness', 0.0)):.2f} "
                 f"m_sec={float(mods.get('securing', 0.0)):.2f} "
+                f"m_app={float(mods.get('approach', 0.0)):.2f} "
                 f"g_eff={float(goals.get('efficiency', 0.0)):.2f} "
                 f"g_acc={float(goals.get('accuracy', 0.0)):.2f} "
                 f"g_help={float(goals.get('help_long', 0.0)):.2f} "

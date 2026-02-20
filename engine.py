@@ -27,6 +27,7 @@ def init_state() -> dict:
             "topic_familiarity": 0.50,
             "failure_wariness": 0.10,
             "securing": 0.30,
+            "approach": 0.40,
         },
         "params": {
             "urgency_alpha": 0.60,
@@ -37,6 +38,7 @@ def init_state() -> dict:
             "failure_alpha": 0.55,
             "failure_decay": 0.20,
             "securing_alpha": 0.45,
+            "approach_alpha": 0.40,
             "goal_alpha": 0.25,
             "anti_goal_alpha": 0.20,
             "decompose_min_complexity": 0.80,
@@ -97,8 +99,15 @@ def _goal_targets(context: dict, decision: dict) -> dict:
     elif decision.get("action") == "act_verify":
         target_accuracy += 0.06
         target_help_long += 0.02
+        target_over_safety += 0.05
+        target_over_honesty += 0.06
+    elif decision.get("action") == "act_think":
+        target_accuracy += 0.04
+        target_help_long += 0.04
+        target_over_honesty += 0.04
     elif decision.get("action") == "act_respond":
         target_efficiency += 0.05
+        target_over_safety -= 0.02
     elif decision.get("action") == "act_clarify":
         target_accuracy += 0.03
         target_over_honesty += 0.04
@@ -106,11 +115,6 @@ def _goal_targets(context: dict, decision: dict) -> dict:
         target_accuracy += 0.04
         target_efficiency += 0.01
         target_help_long += 0.06
-    elif decision.get("action") == "act_verify":
-        target_over_safety += 0.05
-        target_over_honesty += 0.06
-    elif decision.get("action") == "act_respond":
-        target_over_safety -= 0.02
 
     return {
         "efficiency": _clamp01(target_efficiency),
@@ -138,6 +142,7 @@ def _hallucination_penalty(action: str, cx: float, ambiguity: float) -> float:
         "act_verify": 0.12,
         "act_clarify": 0.15,
         "act_decompose": 0.40,
+        "act_think": 0.22,
     }.get(action, 0.50)
     if action == "act_respond":
         base += 0.25 * cx + 0.20 * ambiguity
@@ -184,6 +189,13 @@ ACTIONS = {
         "over_safety": 0.76,
         "over_honesty": 0.80,
     },
+    "act_think": {
+        "efficiency": 0.40,
+        "accuracy": lambda cx: _clamp01(0.60 + 0.25 * cx),
+        "help_long": lambda cx: _clamp01(0.60 + 0.25 * cx),
+        "over_safety": 0.84,
+        "over_honesty": 0.90,
+    },
 }
 
 
@@ -200,6 +212,7 @@ def step(context: dict, state: dict) -> dict:
     failure_alpha = float(params.get("failure_alpha", 0.55))
     failure_decay = float(params.get("failure_decay", 0.20))
     securing_alpha = float(params.get("securing_alpha", 0.45))
+    approach_alpha = float(params.get("approach_alpha", 0.40))
     decompose_min_complexity = float(params.get("decompose_min_complexity", 0.80))
     decompose_urgent_min_complexity = float(
         params.get("decompose_urgent_min_complexity", 0.90)
@@ -252,6 +265,17 @@ def step(context: dict, state: dict) -> dict:
         + securing_alpha * securing_target
     )
 
+    approach_target = _clamp01(
+        0.45 * cx
+        + 0.25 * (1.0 - ambiguity)
+        + 0.20 * (1.0 - threshold_signal)
+        + 0.10 * (1.0 - failure_signal)
+    )
+    mods["approach"] = _clamp01(
+        (1.0 - approach_alpha) * float(mods.get("approach", 0.4))
+        + approach_alpha * approach_target
+    )
+
     u = float(mods["urgency"])
     res = float(mods["resolution"])
     ux = float(mods["user_expertise"])
@@ -259,6 +283,7 @@ def step(context: dict, state: dict) -> dict:
     familiarity = float(mods["topic_familiarity"])
     failure_wariness = float(mods["failure_wariness"])
     securing = float(mods["securing"])
+    approach = float(mods["approach"])
 
     confidence = _clamp01(
         0.55 * familiarity + 0.25 * (1.0 - ambiguity) + 0.20 * (1.0 - cx)
@@ -312,6 +337,11 @@ def step(context: dict, state: dict) -> dict:
                 score += 0.45
             if cx < 0.45:
                 score -= 0.35
+            score += 0.10 * approach
+        elif action == "act_think":
+            score += 0.35 * cx + 0.25 * ambiguity + 0.35 * approach
+            score += 0.10 * low_confidence + 0.10 * (1.0 - u)
+            score -= 0.10 * threshold
 
         score -= anti_hall * _hallucination_penalty(action, cx=cx, ambiguity=ambiguity)
 
@@ -372,8 +402,18 @@ def step(context: dict, state: dict) -> dict:
             scores["act_search"] = -1e9
         if "act_clarify" in scores:
             scores["act_clarify"] = -1e9
+        if "act_think" in scores:
+            scores["act_think"] = -1e9
         if "act_respond" in scores:
             scores["act_respond"] += 0.60
+
+    if "act_think" in scores and not (
+        cx >= 0.55
+        or ambiguity >= 0.40
+        or low_confidence >= 0.45
+        or (approach >= 0.62 and cx >= 0.50)
+    ):
+        scores["act_think"] = -1e9
 
     best_action = max(scores, key=scores.get)
     reason = ""
@@ -385,6 +425,8 @@ def step(context: dict, state: dict) -> dict:
         reason = "Risk or low confidence requires verification."
     elif best_action == "act_decompose":
         reason = "Complex task benefits from decomposition."
+    elif best_action == "act_think":
+        reason = "Reflective thinking improves answer quality."
     else:
         reason = "Ambiguity requires clarification."
 
@@ -398,6 +440,7 @@ def step(context: dict, state: dict) -> dict:
         "topic_familiarity": familiarity,
         "failure_wariness": failure_wariness,
         "securing": securing,
+        "approach": approach,
         "anti_hallucinate": anti_hall,
         "over_safety": over_safety,
         "over_honesty": over_honesty,
