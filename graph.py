@@ -109,7 +109,11 @@ def node_prompt_shaper(state: GraphState) -> GraphState:
             style += " Use expert-level concise wording."
         if urgency >= 0.6:
             style = "Be extremely concise and direct."
-        system = f"You are Qwestor. {style} Do not add greetings or self-introductions."
+        system = (
+            f"You are Qwestor. {style} "
+            "Avoid unsupported precise numeric claims (percentages, exact rates, exact counts) unless grounded in provided evidence. "
+            "Do not add greetings or self-introductions."
+        )
     elif decision["action"] == "act_clarify":
         system = (
             "You are Qwestor. Ask exactly one short clarifying question. "

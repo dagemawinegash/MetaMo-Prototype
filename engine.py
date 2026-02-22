@@ -11,6 +11,7 @@ def _clamp01(value: float) -> float:
 
 def init_state() -> dict:
     return {
+        "turn_count": 0,
         "goals": {
             "efficiency": 0.60,
             "accuracy": 0.70,
@@ -20,7 +21,11 @@ def init_state() -> dict:
             "over_safety": 0.65,
             "over_honesty": 0.65,
         },
-        "anti_goals": {"hallucinate": 0.35},
+        "anti_goals": {
+            "hallucinate": 0.35,
+            "redundant": 0.30,
+            "premature": 0.30,
+        },
         "modulators": {
             "urgency": 0.20,
             "resolution": 0.40,
@@ -43,6 +48,8 @@ def init_state() -> dict:
             "approach_alpha": 0.40,
             "goal_alpha": 0.25,
             "anti_goal_alpha": 0.20,
+            "cold_start_horizon": 2.0,
+            "cold_start_strength": 0.70,
             "decompose_min_complexity": 0.80,
             "decompose_urgent_min_complexity": 0.90,
             "decompose_max_ambiguity": 0.70,
@@ -156,14 +163,40 @@ def _goal_targets(context: dict, decision: dict) -> dict:
     }
 
 
-def _anti_goal_target(context: dict) -> float:
+def _anti_goal_targets(context: dict, goals: dict) -> dict:
     threshold = float(context.get("threshold", 0.3))
     familiarity = float(context.get("topic_familiarity", 0.5))
     failure_signal = float(context.get("failure_signal", 0.0))
-    target = (
+    urgency = 1.0 if bool(context.get("urgent", False)) else 0.0
+    complexity = float(context.get("complexity", 0.3))
+    ambiguity = float(context.get("ambiguity", 0.0))
+    expertise = float(context.get("expertise", 0.5))
+    help_short_now = float(goals.get("help_short", 0.55))
+
+    hallucinate_target = (
         0.15 + 0.55 * threshold + 0.25 * (1.0 - familiarity) + 0.20 * failure_signal
     )
-    return _clamp01(target)
+    redundant_target = (
+        0.22
+        + 0.45 * help_short_now
+        + 0.18 * expertise
+        + 0.15 * (1.0 - ambiguity)
+        + 0.05 * urgency
+    )
+    premature_target = (
+        0.20
+        + 0.45 * complexity
+        + 0.30 * ambiguity
+        + 0.20 * threshold
+        - 0.20 * help_short_now
+        + 0.08 * (1.0 - familiarity)
+    )
+
+    return {
+        "hallucinate": _clamp01(hallucinate_target),
+        "redundant": _clamp01(redundant_target),
+        "premature": _clamp01(premature_target),
+    }
 
 
 def _hallucination_penalty(action: str, cx: float, ambiguity: float) -> float:
@@ -182,6 +215,36 @@ def _hallucination_penalty(action: str, cx: float, ambiguity: float) -> float:
     elif action == "act_decompose":
         base += 0.10 * cx
     return _clamp01(base)
+
+
+def _redundancy_penalty(
+    action: str, cx: float, familiarity: float, urgency: float
+) -> float:
+    if action == "act_respond":
+        return _clamp01(
+            0.45 + 0.25 * (1.0 - cx) + 0.15 * familiarity + 0.10 * (1.0 - urgency)
+        )
+    return {
+        "act_search": 0.42,
+        "act_verify": 0.30,
+        "act_clarify": 0.18,
+        "act_decompose": 0.72,
+        "act_think": 0.82,
+    }.get(action, 0.35)
+
+
+def _premature_penalty(
+    action: str, cx: float, ambiguity: float, threshold: float
+) -> float:
+    if action == "act_respond":
+        return _clamp01(0.40 + 0.35 * cx + 0.25 * ambiguity + 0.20 * threshold)
+    return {
+        "act_search": 0.20,
+        "act_verify": 0.08,
+        "act_clarify": 0.12,
+        "act_decompose": 0.10,
+        "act_think": 0.15,
+    }.get(action, 0.20)
 
 
 ACTIONS = {
@@ -244,7 +307,9 @@ ACTIONS = {
 
 def step(context: dict, state: dict) -> dict:
     goals = state["goals"]
-    anti_goals = state.get("anti_goals", {"hallucinate": 0.35})
+    anti_goals = state.get(
+        "anti_goals", {"hallucinate": 0.35, "redundant": 0.30, "premature": 0.30}
+    )
     mods = state["modulators"]
     params = state["params"]
     urgency_alpha = float(params.get("urgency_alpha", 0.60))
@@ -256,6 +321,8 @@ def step(context: dict, state: dict) -> dict:
     failure_decay = float(params.get("failure_decay", 0.20))
     securing_alpha = float(params.get("securing_alpha", 0.45))
     approach_alpha = float(params.get("approach_alpha", 0.40))
+    cold_start_horizon = float(params.get("cold_start_horizon", 2.0))
+    cold_start_strength = float(params.get("cold_start_strength", 0.70))
     decompose_min_complexity = float(params.get("decompose_min_complexity", 0.80))
     decompose_urgent_min_complexity = float(
         params.get("decompose_urgent_min_complexity", 0.90)
@@ -319,19 +386,32 @@ def step(context: dict, state: dict) -> dict:
         + approach_alpha * approach_target
     )
 
-    u = float(mods["urgency"])
-    res = float(mods["resolution"])
-    ux = float(mods["user_expertise"])
-    threshold = float(mods["threshold"])
-    familiarity = float(mods["topic_familiarity"])
-    failure_wariness = float(mods["failure_wariness"])
-    securing = float(mods["securing"])
-    approach = float(mods["approach"])
+    turn_count = int(state.get("turn_count", 0))
+    if cold_start_horizon > 0.0 and turn_count < cold_start_horizon:
+        cold_phase = (cold_start_horizon - float(turn_count)) / cold_start_horizon
+        cold_weight = _clamp01(cold_start_strength * cold_phase)
+    else:
+        cold_weight = 0.0
+
+    def _effective(smoothed: float, raw_signal: float) -> float:
+        return _clamp01((1.0 - cold_weight) * smoothed + cold_weight * raw_signal)
+
+    u = _effective(float(mods["urgency"]), target_u)
+    res = _effective(float(mods["resolution"]), cx)
+    ux = _effective(float(mods["user_expertise"]), expertise)
+    threshold = _effective(float(mods["threshold"]), threshold_signal)
+    familiarity = _effective(float(mods["topic_familiarity"]), familiarity_signal)
+    failure_wariness = _effective(float(mods["failure_wariness"]), failure_signal)
+    securing = _effective(float(mods["securing"]), securing_target)
+    approach = _effective(float(mods["approach"]), approach_target)
 
     confidence = _clamp01(
         0.55 * familiarity + 0.25 * (1.0 - ambiguity) + 0.20 * (1.0 - cx)
     )
     low_confidence = _clamp01(1.0 - confidence)
+    answerability = _clamp01(
+        (1.0 - ambiguity) * (1.0 - threshold_signal) * familiarity_signal
+    )
 
     weights = _goal_weights(
         goals=goals,
@@ -343,6 +423,8 @@ def step(context: dict, state: dict) -> dict:
         low_confidence=low_confidence,
     )
     anti_hall = float(anti_goals.get("hallucinate", 0.35))
+    anti_redundant = float(anti_goals.get("redundant", 0.30))
+    anti_premature = float(anti_goals.get("premature", 0.30))
     help_short = float(goals.get("help_short", 0.55))
     help_long = float(goals.get("help_long", 0.45))
     over_beneficial = float(goals.get("over_beneficial", 0.60))
@@ -362,11 +444,19 @@ def step(context: dict, state: dict) -> dict:
         if action == "act_clarify":
             score += 0.90 * ambiguity - 0.35 * ux - 0.15 * u + 0.20 * threshold
             score += 0.20 * securing
+            score -= 0.55 * answerability
+            score -= 0.20 * help_short
+            score -= 0.15 * anti_redundant
+            if ambiguity > 0.75 and (threshold_signal > 0.55 or low_confidence > 0.45):
+                score += 0.18
         elif action == "act_respond":
             score += 0.35 * u + 0.25 * (1.0 - ambiguity) + 0.15 * ux - 0.20 * cx
             score += 0.20 * familiarity - 0.35 * threshold - 0.30 * failure_wariness
             score -= 0.35 * securing + 0.20 * low_confidence
             score += 0.30 * help_short - 0.15 * help_long
+            score += 0.45 * answerability
+            score += 0.16 * help_short
+            score += 0.12 * anti_redundant
         elif action == "act_search":
             score += 0.35 * cx + 0.20 * res - 0.15 * u
             score += (
@@ -393,8 +483,21 @@ def step(context: dict, state: dict) -> dict:
             score += 0.10 * low_confidence + 0.10 * (1.0 - u)
             score -= 0.10 * threshold
             score += 0.10 * help_long - 0.08 * help_short
+            score -= 0.30 * anti_redundant * (0.70 + 0.30 * familiarity)
 
         score -= anti_hall * _hallucination_penalty(action, cx=cx, ambiguity=ambiguity)
+        score -= (
+            anti_redundant
+            * _redundancy_penalty(action, cx=cx, familiarity=familiarity, urgency=u)
+            * (0.70 + 0.30 * (1.0 - u))
+        )
+        score -= (
+            anti_premature
+            * _premature_penalty(
+                action, cx=cx, ambiguity=ambiguity, threshold=threshold
+            )
+            * (0.60 + 0.40 * threshold)
+        )
 
         safety_risk = {
             "act_respond": _clamp01(
@@ -468,6 +571,22 @@ def step(context: dict, state: dict) -> dict:
         if "act_respond" in scores:
             scores["act_respond"] += 0.60
 
+    # do not clarify when query is answerable and risk is low
+    if (
+        cx <= 0.45
+        and ambiguity <= 0.35
+        and threshold_signal <= 0.20
+        and low_confidence <= 0.30
+        and familiarity_signal >= 0.80
+        and help_short >= 0.55
+    ):
+        if "act_clarify" in scores:
+            scores["act_clarify"] = -1e9
+        if "act_search" in scores:
+            scores["act_search"] = -1e9
+        if "act_respond" in scores:
+            scores["act_respond"] += 0.40
+
     if "act_think" in scores and not (
         cx >= 0.55
         or ambiguity >= 0.40
@@ -494,6 +613,8 @@ def step(context: dict, state: dict) -> dict:
     return {
         "action": best_action,
         "reason": reason,
+        "cold_weight": cold_weight,
+        "turn_count": turn_count,
         "urgency": u,
         "resolution": res,
         "user_expertise": ux,
@@ -503,6 +624,8 @@ def step(context: dict, state: dict) -> dict:
         "securing": securing,
         "approach": approach,
         "anti_hallucinate": anti_hall,
+        "anti_redundant": anti_redundant,
+        "anti_premature": anti_premature,
         "help_short": help_short,
         "help_long": help_long,
         "over_beneficial": over_beneficial,
@@ -541,10 +664,23 @@ def post_update(context: dict, state: dict, decision: dict) -> dict:
     )
 
     if anti_goals is not None:
+        anti_targets = _anti_goal_targets(context, goals)
         anti_goals["hallucinate"] = _blend(
             float(anti_goals.get("hallucinate", 0.35)),
-            _anti_goal_target(context),
+            float(anti_targets.get("hallucinate", 0.35)),
             anti_alpha,
         )
+        anti_goals["redundant"] = _blend(
+            float(anti_goals.get("redundant", 0.30)),
+            float(anti_targets.get("redundant", 0.30)),
+            anti_alpha,
+        )
+        anti_goals["premature"] = _blend(
+            float(anti_goals.get("premature", 0.30)),
+            float(anti_targets.get("premature", 0.30)),
+            anti_alpha,
+        )
+
+    state["turn_count"] = int(state.get("turn_count", 0)) + 1
 
     return state
