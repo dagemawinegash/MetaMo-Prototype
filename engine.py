@@ -15,6 +15,7 @@ def init_state() -> dict:
         "goals": {
             "efficiency": 0.60,
             "accuracy": 0.70,
+            "success_moderate": 0.62,
             "help_short": 0.55,
             "help_long": 0.45,
             "over_beneficial": 0.60,
@@ -24,6 +25,7 @@ def init_state() -> dict:
         "anti_goals": {
             "hallucinate": 0.35,
             "redundant": 0.30,
+            "rabbit_hole": 0.28,
             "premature": 0.30,
         },
         "modulators": {
@@ -71,6 +73,14 @@ def _goal_weights(
     short_help_base = float(goals.get("help_short", 0.55)) * (
         0.65 + 0.55 * urgency + 0.25 * (1.0 - complexity)
     )
+    success_moderate_base = float(goals.get("success_moderate", 0.62)) * (
+        0.65
+        + 0.35 * threshold
+        + 0.35 * securing
+        + 0.30 * low_confidence
+        + 0.20 * complexity
+        - 0.20 * urgency
+    )
     beneficial_base = float(goals.get("over_beneficial", 0.60)) * (
         0.60 + 0.45 * threshold + 0.40 * securing + 0.30 * low_confidence
     )
@@ -83,6 +93,7 @@ def _goal_weights(
     return {
         "efficiency": efficiency_base * (0.70 + 0.60 * urgency),
         "accuracy": accuracy_base * (0.70 - 0.40 * urgency + 0.50 * resolution),
+        "success_moderate": success_moderate_base,
         "help_short": short_help_base,
         "help_long": float(goals["help_long"])
         * (0.55 + 0.65 * resolution + 0.30 * complexity),
@@ -105,6 +116,14 @@ def _goal_targets(context: dict, decision: dict) -> dict:
     target_accuracy = (
         0.45 + 0.45 * cx + 0.10 * ambiguity + (0.05 if not urgent else 0.0)
     )
+    target_success_moderate = (
+        0.45
+        + 0.30 * cx
+        + 0.25 * ambiguity
+        + 0.25 * float(context.get("threshold", 0.3))
+        + 0.20 * float(context.get("failure_signal", 0.0))
+        - (0.08 if urgent else 0.0)
+    )
     target_help_short = (
         0.35 + 0.35 * (1.0 - cx) + 0.20 * (1.0 - ambiguity) + (0.10 if urgent else 0.0)
     )
@@ -121,9 +140,11 @@ def _goal_targets(context: dict, decision: dict) -> dict:
 
     if decision.get("action") == "act_search":
         target_accuracy += 0.05
+        target_success_moderate += 0.01
         target_help_short -= 0.02
     elif decision.get("action") == "act_verify":
         target_accuracy += 0.06
+        target_success_moderate += 0.06
         target_help_short -= 0.03
         target_help_long += 0.02
         target_over_beneficial += 0.05
@@ -131,22 +152,26 @@ def _goal_targets(context: dict, decision: dict) -> dict:
         target_over_honesty += 0.06
     elif decision.get("action") == "act_think":
         target_accuracy += 0.04
+        target_success_moderate -= 0.02
         target_help_short -= 0.02
         target_help_long += 0.04
         target_over_beneficial += 0.03
         target_over_honesty += 0.04
     elif decision.get("action") == "act_respond":
         target_efficiency += 0.05
+        target_success_moderate += 0.02
         target_help_short += 0.08
         target_help_long -= 0.02
         target_over_safety -= 0.02
     elif decision.get("action") == "act_clarify":
         target_accuracy += 0.03
+        target_success_moderate += 0.03
         target_help_short += 0.03
         target_over_beneficial += 0.03
         target_over_honesty += 0.04
     elif decision.get("action") == "act_decompose":
         target_accuracy += 0.04
+        target_success_moderate += 0.04
         target_help_short -= 0.04
         target_efficiency += 0.01
         target_help_long += 0.06
@@ -155,6 +180,7 @@ def _goal_targets(context: dict, decision: dict) -> dict:
     return {
         "efficiency": _clamp01(target_efficiency),
         "accuracy": _clamp01(target_accuracy),
+        "success_moderate": _clamp01(target_success_moderate),
         "help_short": _clamp01(target_help_short),
         "help_long": _clamp01(target_help_long),
         "over_beneficial": _clamp01(target_over_beneficial),
@@ -191,10 +217,19 @@ def _anti_goal_targets(context: dict, goals: dict) -> dict:
         - 0.20 * help_short_now
         + 0.08 * (1.0 - familiarity)
     )
+    rabbit_hole_target = (
+        0.18
+        + 0.40 * help_short_now
+        + 0.25 * urgency
+        + 0.20 * (1.0 - complexity)
+        + 0.20 * (1.0 - ambiguity)
+        + 0.08 * expertise
+    )
 
     return {
         "hallucinate": _clamp01(hallucinate_target),
         "redundant": _clamp01(redundant_target),
+        "rabbit_hole": _clamp01(rabbit_hole_target),
         "premature": _clamp01(premature_target),
     }
 
@@ -247,10 +282,25 @@ def _premature_penalty(
     }.get(action, 0.20)
 
 
+def _rabbit_hole_penalty(action: str, cx: float, ambiguity: float) -> float:
+    if action == "act_think":
+        return _clamp01(0.36 + 0.16 * (1.0 - cx) + 0.14 * (1.0 - ambiguity))
+    if action == "act_decompose":
+        return _clamp01(0.48 + 0.18 * (1.0 - cx) + 0.18 * (1.0 - ambiguity))
+    if action == "act_search":
+        return _clamp01(0.35 + 0.15 * (1.0 - cx) + 0.15 * (1.0 - ambiguity))
+    return {
+        "act_respond": 0.10,
+        "act_verify": 0.18,
+        "act_clarify": 0.14,
+    }.get(action, 0.20)
+
+
 ACTIONS = {
     "act_respond": {
         "efficiency": 1.00,
         "accuracy": lambda cx: _clamp01(1.00 - 1.10 * cx),
+        "success_moderate": lambda cx: _clamp01(0.80 - 0.20 * cx),
         "help_short": lambda cx: _clamp01(0.95 - 0.20 * cx),
         "help_long": lambda cx: _clamp01(0.25 + 0.20 * cx),
         "over_beneficial": lambda cx: _clamp01(0.45 - 0.15 * cx),
@@ -260,6 +310,7 @@ ACTIONS = {
     "act_clarify": {
         "efficiency": 0.65,
         "accuracy": lambda cx: _clamp01(0.55 + 0.25 * cx),
+        "success_moderate": 0.72,
         "help_short": lambda cx: _clamp01(0.55 + 0.10 * (1.0 - cx)),
         "help_long": lambda cx: _clamp01(0.40 + 0.20 * cx),
         "over_beneficial": 0.85,
@@ -269,6 +320,7 @@ ACTIONS = {
     "act_search": {
         "efficiency": 0.25,
         "accuracy": lambda cx: _clamp01(0.30 + 0.90 * cx),
+        "success_moderate": lambda cx: _clamp01(0.55 + 0.20 * cx),
         "help_short": lambda cx: _clamp01(0.35 + 0.10 * (1.0 - cx)),
         "help_long": lambda cx: _clamp01(0.55 + 0.35 * cx),
         "over_beneficial": 0.72,
@@ -278,6 +330,7 @@ ACTIONS = {
     "act_verify": {
         "efficiency": 0.35,
         "accuracy": lambda cx: _clamp01(0.75 + 0.20 * cx),
+        "success_moderate": 0.90,
         "help_short": lambda cx: _clamp01(0.40 + 0.10 * (1.0 - cx)),
         "help_long": lambda cx: _clamp01(0.50 + 0.20 * cx),
         "over_beneficial": 0.96,
@@ -287,6 +340,7 @@ ACTIONS = {
     "act_decompose": {
         "efficiency": 0.45,
         "accuracy": lambda cx: _clamp01(0.55 + 0.35 * cx),
+        "success_moderate": lambda cx: _clamp01(0.65 + 0.15 * cx),
         "help_short": lambda cx: _clamp01(0.30 + 0.05 * (1.0 - cx)),
         "help_long": lambda cx: _clamp01(0.70 + 0.25 * cx),
         "over_beneficial": 0.70,
@@ -296,6 +350,7 @@ ACTIONS = {
     "act_think": {
         "efficiency": 0.40,
         "accuracy": lambda cx: _clamp01(0.60 + 0.25 * cx),
+        "success_moderate": lambda cx: _clamp01(0.45 + 0.20 * cx),
         "help_short": lambda cx: _clamp01(0.35 + 0.10 * (1.0 - cx)),
         "help_long": lambda cx: _clamp01(0.60 + 0.25 * cx),
         "over_beneficial": 0.78,
@@ -308,7 +363,13 @@ ACTIONS = {
 def step(context: dict, state: dict) -> dict:
     goals = state["goals"]
     anti_goals = state.get(
-        "anti_goals", {"hallucinate": 0.35, "redundant": 0.30, "premature": 0.30}
+        "anti_goals",
+        {
+            "hallucinate": 0.35,
+            "redundant": 0.30,
+            "rabbit_hole": 0.28,
+            "premature": 0.30,
+        },
     )
     mods = state["modulators"]
     params = state["params"]
@@ -424,7 +485,9 @@ def step(context: dict, state: dict) -> dict:
     )
     anti_hall = float(anti_goals.get("hallucinate", 0.35))
     anti_redundant = float(anti_goals.get("redundant", 0.30))
+    anti_rabbit_hole = float(anti_goals.get("rabbit_hole", 0.28))
     anti_premature = float(anti_goals.get("premature", 0.30))
+    success_moderate = float(goals.get("success_moderate", 0.62))
     help_short = float(goals.get("help_short", 0.55))
     help_long = float(goals.get("help_long", 0.45))
     over_beneficial = float(goals.get("over_beneficial", 0.60))
@@ -484,6 +547,11 @@ def step(context: dict, state: dict) -> dict:
             score -= 0.10 * threshold
             score += 0.10 * help_long - 0.08 * help_short
             score -= 0.30 * anti_redundant * (0.70 + 0.30 * familiarity)
+            score -= 0.16 * answerability
+            if cx >= 0.70 and approach >= 0.62 and (ambiguity >= 0.25 or low_confidence >= 0.30):
+                score += 0.07
+            elif cx >= 0.65 and approach >= 0.58 and (ambiguity >= 0.22 or low_confidence >= 0.28):
+                score += 0.03
 
         score -= anti_hall * _hallucination_penalty(action, cx=cx, ambiguity=ambiguity)
         score -= (
@@ -497,6 +565,11 @@ def step(context: dict, state: dict) -> dict:
                 action, cx=cx, ambiguity=ambiguity, threshold=threshold
             )
             * (0.60 + 0.40 * threshold)
+        )
+        score -= (
+            anti_rabbit_hole
+            * _rabbit_hole_penalty(action, cx=cx, ambiguity=ambiguity)
+            * (0.40 + 0.22 * help_short)
         )
 
         safety_risk = {
@@ -625,7 +698,9 @@ def step(context: dict, state: dict) -> dict:
         "approach": approach,
         "anti_hallucinate": anti_hall,
         "anti_redundant": anti_redundant,
+        "anti_rabbit_hole": anti_rabbit_hole,
         "anti_premature": anti_premature,
+        "success_moderate": success_moderate,
         "help_short": help_short,
         "help_long": help_long,
         "over_beneficial": over_beneficial,
@@ -647,6 +722,11 @@ def post_update(context: dict, state: dict, decision: dict) -> dict:
         float(goals["efficiency"]), targets["efficiency"], alpha
     )
     goals["accuracy"] = _blend(float(goals["accuracy"]), targets["accuracy"], alpha)
+    goals["success_moderate"] = _blend(
+        float(goals.get("success_moderate", 0.62)),
+        targets["success_moderate"],
+        alpha,
+    )
     goals["help_short"] = _blend(
         float(goals.get("help_short", 0.55)), targets["help_short"], alpha
     )
@@ -673,6 +753,11 @@ def post_update(context: dict, state: dict, decision: dict) -> dict:
         anti_goals["redundant"] = _blend(
             float(anti_goals.get("redundant", 0.30)),
             float(anti_targets.get("redundant", 0.30)),
+            anti_alpha,
+        )
+        anti_goals["rabbit_hole"] = _blend(
+            float(anti_goals.get("rabbit_hole", 0.28)),
+            float(anti_targets.get("rabbit_hole", 0.28)),
             anti_alpha,
         )
         anti_goals["premature"] = _blend(
