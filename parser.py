@@ -4,6 +4,7 @@ import json
 import os
 import re
 import importlib
+import time
 from typing import Any
 
 from dotenv import load_dotenv
@@ -15,13 +16,19 @@ def parse_context(query: str, model: str = "gemini-3-flash-preview") -> dict[str
     if not api_key:
         raise RuntimeError("GEMINI_API_KEY is missing (check .env)")
 
-    parsed = _parse_with_gemini(query=query, api_key=api_key, model=model)
-    print(parsed)
+    last_error = ""
+    for attempt in range(3):
+        parsed = _parse_with_gemini(query=query, api_key=api_key, model=model)
+        if parsed is not None:
+            return parsed
 
-    if parsed is None:
-        raise RuntimeError("Gemini parsing failed (no valid JSON returned)")
+        last_error = f"parse_attempt_{attempt + 1}_failed"
+        if attempt < 2:
+            time.sleep(0.35 * (attempt + 1))
 
-    return parsed
+    raise RuntimeError(
+        f"Gemini parsing failed (no valid JSON returned) after 3 attempts; last_error={last_error}"
+    )
 
 
 def _clamp01(value: float) -> float:
@@ -45,8 +52,10 @@ def _parse_with_gemini(query: str, api_key: str, model: str) -> dict[str, Any] |
 
         system = (
             "Return JSON only (no markdown). "
-            'Schema: {"urgent": boolean, "complexity": number, "ambiguity": number, "expertise": number, "threshold": number, "topic_familiarity": number, "failure_signal": number}. '
+            'Schema: {"urgent": boolean, "complexity": number, "ambiguity": number, "expertise": number, "threshold": number, "topic_familiarity": number, "failure_signal": number, "intent_type": string, "reflective_intent": number}. '
             "Rules: complexity, ambiguity, expertise, threshold, topic_familiarity, failure_signal are each 0..1. "
+            "Rules: intent_type must be one of reflective|factual|mixed. "
+            "Rules: reflective_intent is 0..1 and measures how much deliberate internal reasoning is likely beneficial before final answer. "
             "Interpretation: expertise 0 means novice user language, 1 means expert-level user language."
             "Interpretation: threshold is risk/safety sensitivity (higher means more caution needed). "
             "Interpretation: topic_familiarity is how likely the assistant is to already know this topic well (higher means more familiar). "
@@ -57,15 +66,18 @@ def _parse_with_gemini(query: str, api_key: str, model: str) -> dict[str, Any] |
         raw = out.content if hasattr(out, "content") else str(out)
         payload = _extract_json(_to_text(raw))
 
-        urgent = payload.get("urgent", None)
+        urgent_raw = payload.get("urgent", None)
         complexity_raw = payload.get("complexity", None)
         ambiguity_raw = payload.get("ambiguity", None)
         expertise_raw = payload.get("expertise", None)
         threshold_raw = payload.get("threshold", 0.3)
         topic_familiarity_raw = payload.get("topic_familiarity", 0.5)
         failure_signal_raw = payload.get("failure_signal", 0.0)
+        intent_type_raw = str(payload.get("intent_type", "mixed")).strip().lower()
+        reflective_intent_raw = payload.get("reflective_intent", 0.5)
 
-        if not isinstance(urgent, bool):
+        urgent = _coerce_bool(urgent_raw)
+        if urgent is None:
             return None
 
         try:
@@ -75,8 +87,12 @@ def _parse_with_gemini(query: str, api_key: str, model: str) -> dict[str, Any] |
             threshold = _clamp01(float(threshold_raw))
             topic_familiarity = _clamp01(float(topic_familiarity_raw))
             failure_signal = _clamp01(float(failure_signal_raw))
+            reflective_intent = _clamp01(float(reflective_intent_raw))
         except Exception:
             return None
+
+        if intent_type_raw not in {"reflective", "factual", "mixed"}:
+            intent_type_raw = "mixed"
 
         return {
             "urgent": urgent,
@@ -86,6 +102,8 @@ def _parse_with_gemini(query: str, api_key: str, model: str) -> dict[str, Any] |
             "threshold": threshold,
             "topic_familiarity": topic_familiarity,
             "failure_signal": failure_signal,
+            "intent_type": intent_type_raw,
+            "reflective_intent": reflective_intent,
         }
 
     except Exception:
@@ -114,8 +132,28 @@ def _extract_json(text: str) -> dict[str, Any]:
     cleaned = text.strip()
     cleaned = re.sub(r"^```(json)?\s*", "", cleaned, flags=re.IGNORECASE)
     cleaned = re.sub(r"```\s*$", "", cleaned)
-    start = cleaned.find("{")
-    end = cleaned.rfind("}")
-    if start == -1 or end == -1 or end <= start:
-        raise ValueError("No JSON object found")
-    return json.loads(cleaned[start : end + 1])
+    decoder = json.JSONDecoder()
+    for i, ch in enumerate(cleaned):
+        if ch != "{":
+            continue
+        try:
+            obj, _ = decoder.raw_decode(cleaned[i:])
+            if isinstance(obj, dict):
+                return obj
+        except Exception:
+            continue
+    raise ValueError("No JSON object found")
+
+
+def _coerce_bool(value: Any) -> bool | None:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return bool(value)
+    if isinstance(value, str):
+        text = value.strip().lower()
+        if text in {"true", "yes", "y", "1"}:
+            return True
+        if text in {"false", "no", "n", "0"}:
+            return False
+    return None

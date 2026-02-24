@@ -55,6 +55,9 @@ def init_state() -> dict:
             "decompose_min_complexity": 0.80,
             "decompose_urgent_min_complexity": 0.90,
             "decompose_max_ambiguity": 0.70,
+            "reflective_think_bonus": 0.14,
+            "reflective_search_penalty": 0.10,
+            "intent_margin": 0.12,
         },
     }
 
@@ -389,6 +392,11 @@ def step(context: dict, state: dict) -> dict:
         params.get("decompose_urgent_min_complexity", 0.90)
     )
     decompose_max_ambiguity = float(params.get("decompose_max_ambiguity", 0.70))
+    reflective_think_bonus = float(params.get("reflective_think_bonus", 0.14))
+    reflective_search_penalty = float(params.get("reflective_search_penalty", 0.10))
+    intent_margin = float(
+        params.get("intent_margin", params.get("think_search_tie_margin", 0.12))
+    )
 
     target_u = 1.0 if context.get("urgent") else 0.0
     mods["urgency"] = _clamp01(
@@ -402,6 +410,16 @@ def step(context: dict, state: dict) -> dict:
     familiarity_signal = float(context.get("topic_familiarity", 0.5))
     failure_signal = float(context.get("failure_signal", 0.0))
     urgent_flag = bool(context.get("urgent", False))
+    intent_type = str(context.get("intent_type", "mixed")).strip().lower()
+    reflective_intent_raw = context.get("reflective_intent", None)
+    if reflective_intent_raw is None:
+        reflective_intent = (
+            0.80
+            if intent_type == "reflective"
+            else 0.15 if intent_type == "factual" else 0.50
+        )
+    else:
+        reflective_intent = _clamp01(float(reflective_intent_raw))
 
     mods["resolution"] = _clamp01(
         (1.0 - resolution_alpha) * float(mods.get("resolution", 0.4))
@@ -527,6 +545,7 @@ def step(context: dict, state: dict) -> dict:
             )
             score += 0.15 * securing
             score += 0.06 * help_long - 0.08 * help_short
+            score -= reflective_search_penalty * reflective_intent
         elif action == "act_verify":
             score += 0.65 * threshold + 0.75 * low_confidence + 0.35 * failure_wariness
             score += 0.15 * cx - 0.20 * u - 0.10 * ambiguity
@@ -546,11 +565,20 @@ def step(context: dict, state: dict) -> dict:
             score += 0.10 * low_confidence + 0.10 * (1.0 - u)
             score -= 0.10 * threshold
             score += 0.10 * help_long - 0.08 * help_short
+            score += reflective_think_bonus * reflective_intent
             score -= 0.30 * anti_redundant * (0.70 + 0.30 * familiarity)
             score -= 0.16 * answerability
-            if cx >= 0.70 and approach >= 0.62 and (ambiguity >= 0.25 or low_confidence >= 0.30):
+            if (
+                cx >= 0.70
+                and approach >= 0.62
+                and (ambiguity >= 0.25 or low_confidence >= 0.30)
+            ):
                 score += 0.07
-            elif cx >= 0.65 and approach >= 0.58 and (ambiguity >= 0.22 or low_confidence >= 0.28):
+            elif (
+                cx >= 0.65
+                and approach >= 0.58
+                and (ambiguity >= 0.22 or low_confidence >= 0.28)
+            ):
                 score += 0.03
 
         score -= anti_hall * _hallucination_penalty(action, cx=cx, ambiguity=ambiguity)
@@ -668,6 +696,25 @@ def step(context: dict, state: dict) -> dict:
     ):
         scores["act_think"] = -1e9
 
+    search_score = float(scores.get("act_search", -1e9))
+    think_score = float(scores.get("act_think", -1e9))
+    if (
+        search_score > -1e8
+        and think_score > -1e8
+        and abs(search_score - think_score) <= intent_margin
+    ):
+        if intent_type == "reflective":
+            preferred = "act_think"
+        elif intent_type == "factual":
+            preferred = "act_search"
+        else:
+            preferred = (
+                "act_search"
+                if (low_confidence >= 0.40 or threshold >= 0.45)
+                else "act_think"
+            )
+        scores[preferred] = max(search_score, think_score) + intent_margin + 1e-4
+
     best_action = max(scores, key=scores.get)
     reason = ""
     if best_action == "act_respond":
@@ -708,6 +755,8 @@ def step(context: dict, state: dict) -> dict:
         "over_honesty": over_honesty,
         "confidence": confidence,
         "low_confidence": low_confidence,
+        "intent_type": intent_type,
+        "reflective_intent": reflective_intent,
     }
 
 
