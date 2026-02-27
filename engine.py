@@ -16,6 +16,8 @@ def init_state() -> dict:
             "efficiency": 0.60,
             "accuracy": 0.70,
             "success_moderate": 0.62,
+            "knowledge": 0.52,
+            "success_breakthrough": 0.44,
             "help_short": 0.55,
             "help_long": 0.45,
             "over_beneficial": 0.60,
@@ -88,6 +90,16 @@ def _goal_weights(
         + 0.20 * complexity
         - 0.20 * urgency
     )
+    knowledge_base = float(goals.get("knowledge", 0.52)) * (
+        0.55 + 0.55 * complexity + 0.30 * resolution - 0.20 * urgency
+    )
+    breakthrough_base = float(goals.get("success_breakthrough", 0.44)) * (
+        0.45
+        + 0.45 * complexity
+        + 0.35 * low_confidence
+        + 0.20 * threshold
+        - 0.15 * urgency
+    )
     beneficial_base = float(goals.get("over_beneficial", 0.60)) * (
         0.60 + 0.45 * threshold + 0.40 * securing + 0.30 * low_confidence
     )
@@ -101,6 +113,8 @@ def _goal_weights(
         "efficiency": efficiency_base * (0.70 + 0.60 * urgency),
         "accuracy": accuracy_base * (0.70 - 0.40 * urgency + 0.50 * resolution),
         "success_moderate": success_moderate_base,
+        "knowledge": knowledge_base,
+        "success_breakthrough": breakthrough_base,
         "help_short": short_help_base,
         "help_long": float(goals["help_long"])
         * (0.55 + 0.65 * resolution + 0.30 * complexity),
@@ -131,6 +145,19 @@ def _goal_targets(context: dict, decision: dict) -> dict:
         + 0.20 * float(context.get("failure_signal", 0.0))
         - (0.08 if urgent else 0.0)
     )
+    target_knowledge = (
+        0.35
+        + 0.50 * cx
+        + 0.20 * ambiguity
+        + 0.10 * float(context.get("expertise", 0.5))
+    )
+    target_success_breakthrough = (
+        0.30
+        + 0.45 * cx
+        + 0.25 * ambiguity
+        + 0.20 * float(context.get("reflective_intent", 0.5))
+        - (0.08 if urgent else 0.0)
+    )
     target_help_short = (
         0.35 + 0.35 * (1.0 - cx) + 0.20 * (1.0 - ambiguity) + (0.10 if urgent else 0.0)
     )
@@ -148,10 +175,14 @@ def _goal_targets(context: dict, decision: dict) -> dict:
     if decision.get("action") == "act_search":
         target_accuracy += 0.05
         target_success_moderate += 0.01
+        target_knowledge += 0.06
+        target_success_breakthrough += 0.04
         target_help_short -= 0.02
     elif decision.get("action") == "act_verify":
         target_accuracy += 0.06
         target_success_moderate += 0.06
+        target_knowledge += 0.03
+        target_success_breakthrough += 0.01
         target_help_short -= 0.03
         target_help_long += 0.02
         target_over_beneficial += 0.05
@@ -160,6 +191,8 @@ def _goal_targets(context: dict, decision: dict) -> dict:
     elif decision.get("action") == "act_think":
         target_accuracy += 0.04
         target_success_moderate -= 0.02
+        target_knowledge += 0.05
+        target_success_breakthrough += 0.06
         target_help_short -= 0.02
         target_help_long += 0.04
         target_over_beneficial += 0.03
@@ -167,18 +200,23 @@ def _goal_targets(context: dict, decision: dict) -> dict:
     elif decision.get("action") == "act_respond":
         target_efficiency += 0.05
         target_success_moderate += 0.02
+        target_knowledge -= 0.04
+        target_success_breakthrough -= 0.04
         target_help_short += 0.08
         target_help_long -= 0.02
         target_over_safety -= 0.02
     elif decision.get("action") == "act_clarify":
         target_accuracy += 0.03
         target_success_moderate += 0.03
+        target_knowledge += 0.01
         target_help_short += 0.03
         target_over_beneficial += 0.03
         target_over_honesty += 0.04
     elif decision.get("action") == "act_decompose":
         target_accuracy += 0.04
         target_success_moderate += 0.04
+        target_knowledge += 0.07
+        target_success_breakthrough += 0.08
         target_help_short -= 0.04
         target_efficiency += 0.01
         target_help_long += 0.06
@@ -188,6 +226,8 @@ def _goal_targets(context: dict, decision: dict) -> dict:
         "efficiency": _clamp01(target_efficiency),
         "accuracy": _clamp01(target_accuracy),
         "success_moderate": _clamp01(target_success_moderate),
+        "knowledge": _clamp01(target_knowledge),
+        "success_breakthrough": _clamp01(target_success_breakthrough),
         "help_short": _clamp01(target_help_short),
         "help_long": _clamp01(target_help_long),
         "over_beneficial": _clamp01(target_over_beneficial),
@@ -308,6 +348,8 @@ ACTIONS = {
         "efficiency": 1.00,
         "accuracy": lambda cx: _clamp01(1.00 - 1.10 * cx),
         "success_moderate": lambda cx: _clamp01(0.80 - 0.20 * cx),
+        "knowledge": lambda cx: _clamp01(0.28 + 0.18 * cx),
+        "success_breakthrough": lambda cx: _clamp01(0.18 + 0.12 * cx),
         "help_short": lambda cx: _clamp01(0.95 - 0.20 * cx),
         "help_long": lambda cx: _clamp01(0.25 + 0.20 * cx),
         "over_beneficial": lambda cx: _clamp01(0.45 - 0.15 * cx),
@@ -318,6 +360,8 @@ ACTIONS = {
         "efficiency": 0.65,
         "accuracy": lambda cx: _clamp01(0.55 + 0.25 * cx),
         "success_moderate": 0.72,
+        "knowledge": lambda cx: _clamp01(0.45 + 0.20 * cx),
+        "success_breakthrough": lambda cx: _clamp01(0.28 + 0.12 * cx),
         "help_short": lambda cx: _clamp01(0.55 + 0.10 * (1.0 - cx)),
         "help_long": lambda cx: _clamp01(0.40 + 0.20 * cx),
         "over_beneficial": 0.85,
@@ -328,6 +372,8 @@ ACTIONS = {
         "efficiency": 0.25,
         "accuracy": lambda cx: _clamp01(0.30 + 0.90 * cx),
         "success_moderate": lambda cx: _clamp01(0.55 + 0.20 * cx),
+        "knowledge": lambda cx: _clamp01(0.68 + 0.22 * cx),
+        "success_breakthrough": lambda cx: _clamp01(0.45 + 0.18 * cx),
         "help_short": lambda cx: _clamp01(0.35 + 0.10 * (1.0 - cx)),
         "help_long": lambda cx: _clamp01(0.55 + 0.35 * cx),
         "over_beneficial": 0.72,
@@ -338,6 +384,8 @@ ACTIONS = {
         "efficiency": 0.35,
         "accuracy": lambda cx: _clamp01(0.75 + 0.20 * cx),
         "success_moderate": 0.90,
+        "knowledge": lambda cx: _clamp01(0.62 + 0.15 * cx),
+        "success_breakthrough": lambda cx: _clamp01(0.38 + 0.10 * cx),
         "help_short": lambda cx: _clamp01(0.40 + 0.10 * (1.0 - cx)),
         "help_long": lambda cx: _clamp01(0.50 + 0.20 * cx),
         "over_beneficial": 0.96,
@@ -348,6 +396,8 @@ ACTIONS = {
         "efficiency": 0.45,
         "accuracy": lambda cx: _clamp01(0.55 + 0.35 * cx),
         "success_moderate": lambda cx: _clamp01(0.65 + 0.15 * cx),
+        "knowledge": lambda cx: _clamp01(0.72 + 0.20 * cx),
+        "success_breakthrough": lambda cx: _clamp01(0.62 + 0.22 * cx),
         "help_short": lambda cx: _clamp01(0.30 + 0.05 * (1.0 - cx)),
         "help_long": lambda cx: _clamp01(0.70 + 0.25 * cx),
         "over_beneficial": 0.70,
@@ -358,6 +408,8 @@ ACTIONS = {
         "efficiency": 0.40,
         "accuracy": lambda cx: _clamp01(0.60 + 0.25 * cx),
         "success_moderate": lambda cx: _clamp01(0.45 + 0.20 * cx),
+        "knowledge": lambda cx: _clamp01(0.66 + 0.18 * cx),
+        "success_breakthrough": lambda cx: _clamp01(0.68 + 0.20 * cx),
         "help_short": lambda cx: _clamp01(0.35 + 0.10 * (1.0 - cx)),
         "help_long": lambda cx: _clamp01(0.60 + 0.25 * cx),
         "over_beneficial": 0.78,
@@ -545,6 +597,8 @@ def step(context: dict, state: dict) -> dict:
     anti_rabbit_hole = float(anti_goals.get("rabbit_hole", 0.28))
     anti_premature = float(anti_goals.get("premature", 0.30))
     success_moderate = float(goals.get("success_moderate", 0.62))
+    knowledge = float(goals.get("knowledge", 0.52))
+    success_breakthrough = float(goals.get("success_breakthrough", 0.44))
     help_short = float(goals.get("help_short", 0.55))
     help_long = float(goals.get("help_long", 0.45))
     over_beneficial = float(goals.get("over_beneficial", 0.60))
@@ -579,6 +633,8 @@ def step(context: dict, state: dict) -> dict:
             score += 0.22 * error_tolerance
             score += 0.16 * help_short
             score += 0.12 * anti_redundant
+            if cx >= 0.50:
+                score -= 0.08 * knowledge + 0.10 * success_breakthrough
         elif action == "act_search":
             score += 0.35 * cx + 0.20 * res - 0.15 * u
             score += (
@@ -588,6 +644,7 @@ def step(context: dict, state: dict) -> dict:
             score += 0.10 * (1.0 - error_tolerance)
             score += 0.10 * creativity
             score += 0.06 * help_long - 0.08 * help_short
+            score += 0.14 * knowledge + 0.08 * success_breakthrough
             score -= reflective_search_penalty * reflective_intent
         elif action == "act_verify":
             score += 0.65 * threshold + 0.75 * low_confidence + 0.35 * failure_wariness
@@ -598,6 +655,7 @@ def step(context: dict, state: dict) -> dict:
             score += 0.08 * help_long - 0.10 * help_short
             score += 0.24 * verify_intent_proxy
             score += 0.06 * reflective_intent
+            score += 0.05 * knowledge
         elif action == "act_decompose":
             score += 0.45 * cx + 0.45 * res + 0.20 * (1.0 - ambiguity) - 0.15 * u
             score -= 0.25 * ambiguity
@@ -609,6 +667,7 @@ def step(context: dict, state: dict) -> dict:
             score += 0.12 * creativity
             score -= 0.08 * (1.0 - error_tolerance)
             score += 0.12 * help_long - 0.12 * help_short
+            score += 0.12 * knowledge + 0.15 * success_breakthrough
         elif action == "act_think":
             score += 0.35 * cx + 0.25 * ambiguity + 0.35 * approach
             score += 0.10 * low_confidence + 0.10 * (1.0 - u)
@@ -616,6 +675,7 @@ def step(context: dict, state: dict) -> dict:
             score += 0.26 * creativity
             score -= 0.14 * (1.0 - error_tolerance)
             score += 0.10 * help_long - 0.08 * help_short
+            score += 0.10 * knowledge + 0.16 * success_breakthrough
             score += reflective_think_bonus * reflective_intent
             score -= 0.30 * anti_redundant * (0.70 + 0.30 * familiarity)
             score -= 0.16 * answerability
@@ -804,6 +864,8 @@ def step(context: dict, state: dict) -> dict:
         "anti_rabbit_hole": anti_rabbit_hole,
         "anti_premature": anti_premature,
         "success_moderate": success_moderate,
+        "knowledge": knowledge,
+        "success_breakthrough": success_breakthrough,
         "help_short": help_short,
         "help_long": help_long,
         "over_beneficial": over_beneficial,
@@ -830,6 +892,16 @@ def post_update(context: dict, state: dict, decision: dict) -> dict:
     goals["success_moderate"] = _blend(
         float(goals.get("success_moderate", 0.62)),
         targets["success_moderate"],
+        alpha,
+    )
+    goals["knowledge"] = _blend(
+        float(goals.get("knowledge", 0.52)),
+        targets["knowledge"],
+        alpha,
+    )
+    goals["success_breakthrough"] = _blend(
+        float(goals.get("success_breakthrough", 0.44)),
+        targets["success_breakthrough"],
         alpha,
     )
     goals["help_short"] = _blend(

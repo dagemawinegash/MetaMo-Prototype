@@ -6,7 +6,6 @@ from engine import init_state as init_engine_state
 
 def main() -> None:
     app = build_graph()
-    active_sessions: set[str] = set()
     sessions = [
         {
             "name": "Session A - 10 turn mixed stress",
@@ -196,10 +195,20 @@ def main() -> None:
                 "Break this into ordered steps: diagnose whether instability is due to optimizer settings or data pipeline noise.",
             ],
         },
+        {
+            "name": "Session O - long-horizon mini sweep",
+            "queries": [
+                "In one sentence, what is overfitting?",
+                "Give one-word answer: capital of Japan.",
+                "Propose two high-risk, high-reward research bets to reduce model collapse in recursive training loops, and explain why each could be a breakthrough.",
+                "Design a 6-step research roadmap to test whether synthetic-data tail preservation can delay model collapse across generations.",
+                "Compare three research strategies for stabilizing validation loss in large models and state which one is most likely to produce a breakthrough result.",
+                "Break this into an execution plan: build an evaluation pipeline that measures long-horizon knowledge retention under repeated self-training.",
+                "Before answering, verify this claim and include confidence: 'Scaling model size alone prevents model collapse.'",
+                "Quick answer only: define bias-variance tradeoff in two lines.",
+            ],
+        },
     ]
-
-    if active_sessions:
-        sessions = [s for s in sessions if s["name"] in active_sessions]
 
     for session in sessions:
         print(f"\n{session['name']}")
@@ -230,6 +239,8 @@ def main() -> None:
             anti_rabbit_hole = float(decision.get("anti_rabbit_hole", 0.0))
             anti_premature = float(decision.get("anti_premature", 0.0))
             success_moderate = float(decision.get("success_moderate", 0.0))
+            knowledge = float(decision.get("knowledge", 0.0))
+            success_breakthrough = float(decision.get("success_breakthrough", 0.0))
             help_short = float(decision.get("help_short", 0.0))
             help_long = float(decision.get("help_long", 0.0))
             over_beneficial = float(decision.get("over_beneficial", 0.0))
@@ -270,6 +281,8 @@ def main() -> None:
                 f"g_eff={float(goals.get('efficiency', 0.0)):.2f} "
                 f"g_acc={float(goals.get('accuracy', 0.0)):.2f} "
                 f"g_succ_m={float(goals.get('success_moderate', 0.0)):.2f} "
+                f"g_kn={float(goals.get('knowledge', 0.0)):.2f} "
+                f"g_succ_b={float(goals.get('success_breakthrough', 0.0)):.2f} "
                 f"g_help_s={float(goals.get('help_short', 0.0)):.2f} "
                 f"g_help={float(goals.get('help_long', 0.0)):.2f} "
                 f"g_ben={float(goals.get('over_beneficial', 0.0)):.2f} "
@@ -281,6 +294,7 @@ def main() -> None:
                 f"g_anti_p={float(anti_goals.get('premature', 0.0)):.2f} "
                 f"anti_h_now={anti_hall:.2f} anti_r_now={anti_redundant:.2f} anti_rh_now={anti_rabbit_hole:.2f} anti_p_now={anti_premature:.2f} "
                 f"succ_m_now={success_moderate:.2f} "
+                f"kn_now={knowledge:.2f} succ_b_now={success_breakthrough:.2f} "
                 f"help_s_now={help_short:.2f} help_l_now={help_long:.2f} "
                 f"over_b_now={over_beneficial:.2f} over_s_now={over_safety:.2f} over_h_now={over_honesty:.2f} "
                 f"conf={confidence:.2f} low_conf={low_confidence:.2f} "
