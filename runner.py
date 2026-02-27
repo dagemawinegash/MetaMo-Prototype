@@ -6,6 +6,7 @@ from engine import init_state as init_engine_state
 
 def main() -> None:
     app = build_graph()
+    active_sessions: set[str] = set()
     sessions = [
         {
             "name": "Session A - 10 turn mixed stress",
@@ -181,7 +182,24 @@ def main() -> None:
                 "Before answering, verify whether this legal policy changed this week and cite confidence caveats.",
             ],
         },
+        {
+            "name": "Session N - quick vs precise mini sweep",
+            "queries": [
+                "Quick answer only: what is overfitting?",
+                "In two lines, explain bias-variance tradeoff for a beginner.",
+                "Brainstorm two bold but plausible research directions to reduce training instability in deep neural networks.",
+                "Given a model with oscillating validation loss after epoch 8, propose one novel hypothesis for the root cause.",
+                "For a Bayesian inference pipeline with unstable convergence, think briefly and suggest two creative but plausible fixes.",
+                "Before answering, verify whether this ML claim is accurate: 'Dropout always improves test accuracy.'",
+                "Verify this statement carefully and mention confidence: 'Increasing batch size always stabilizes training.'",
+                "Decompose an experiment plan to test whether learning-rate warmup reduces early-epoch instability.",
+                "Break this into ordered steps: diagnose whether instability is due to optimizer settings or data pipeline noise.",
+            ],
+        },
     ]
+
+    if active_sessions:
+        sessions = [s for s in sessions if s["name"] in active_sessions]
 
     for session in sessions:
         print(f"\n{session['name']}")
@@ -221,6 +239,8 @@ def main() -> None:
             low_confidence = float(decision.get("low_confidence", 0.0))
             intent_type = str(decision.get("intent_type", "mixed"))
             reflective_intent = float(decision.get("reflective_intent", 0.0))
+            error_tolerance = float(decision.get("error_tolerance", 0.0))
+            creativity = float(decision.get("creativity", 0.0))
             complexity = float(ctx.get("complexity", 0.0))
             ambiguity = float(ctx.get("ambiguity", 0.0))
             expertise = float(ctx.get("expertise", 0.0))
@@ -245,6 +265,8 @@ def main() -> None:
                 f"m_fw={float(mods.get('failure_wariness', 0.0)):.2f} "
                 f"m_sec={float(mods.get('securing', 0.0)):.2f} "
                 f"m_app={float(mods.get('approach', 0.0)):.2f} "
+                f"m_err={float(mods.get('error_tolerance', 0.0)):.2f} "
+                f"m_cre={float(mods.get('creativity', 0.0)):.2f} "
                 f"g_eff={float(goals.get('efficiency', 0.0)):.2f} "
                 f"g_acc={float(goals.get('accuracy', 0.0)):.2f} "
                 f"g_succ_m={float(goals.get('success_moderate', 0.0)):.2f} "
@@ -262,7 +284,8 @@ def main() -> None:
                 f"help_s_now={help_short:.2f} help_l_now={help_long:.2f} "
                 f"over_b_now={over_beneficial:.2f} over_s_now={over_safety:.2f} over_h_now={over_honesty:.2f} "
                 f"conf={confidence:.2f} low_conf={low_confidence:.2f} "
-                f"intent={intent_type} refl={reflective_intent:.2f}"
+                f"intent={intent_type} refl={reflective_intent:.2f} "
+                f"err_tol={error_tolerance:.2f} creativity={creativity:.2f}"
             )
             print(answer)
             print("-" * 60)

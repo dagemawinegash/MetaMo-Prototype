@@ -37,6 +37,8 @@ def init_state() -> dict:
             "failure_wariness": 0.10,
             "securing": 0.30,
             "approach": 0.40,
+            "error_tolerance": 0.45,
+            "creativity": 0.45,
         },
         "params": {
             "urgency_alpha": 0.60,
@@ -48,6 +50,8 @@ def init_state() -> dict:
             "failure_decay": 0.20,
             "securing_alpha": 0.45,
             "approach_alpha": 0.40,
+            "error_tolerance_alpha": 0.40,
+            "creativity_alpha": 0.40,
             "goal_alpha": 0.25,
             "anti_goal_alpha": 0.20,
             "cold_start_horizon": 2.0,
@@ -385,6 +389,8 @@ def step(context: dict, state: dict) -> dict:
     failure_decay = float(params.get("failure_decay", 0.20))
     securing_alpha = float(params.get("securing_alpha", 0.45))
     approach_alpha = float(params.get("approach_alpha", 0.40))
+    error_tolerance_alpha = float(params.get("error_tolerance_alpha", 0.40))
+    creativity_alpha = float(params.get("creativity_alpha", 0.40))
     cold_start_horizon = float(params.get("cold_start_horizon", 2.0))
     cold_start_strength = float(params.get("cold_start_strength", 0.70))
     decompose_min_complexity = float(params.get("decompose_min_complexity", 0.80))
@@ -465,6 +471,32 @@ def step(context: dict, state: dict) -> dict:
         + approach_alpha * approach_target
     )
 
+    error_tolerance_target = _clamp01(
+        0.45
+        + 0.25 * (1.0 - threshold_signal)
+        + 0.20 * familiarity_signal
+        + 0.15 * (1.0 - failure_signal)
+        - 0.20 * ambiguity
+        - 0.10 * (1.0 if urgent_flag else 0.0)
+    )
+    mods["error_tolerance"] = _clamp01(
+        (1.0 - error_tolerance_alpha) * float(mods.get("error_tolerance", 0.45))
+        + error_tolerance_alpha * error_tolerance_target
+    )
+
+    creativity_target = _clamp01(
+        0.30
+        + 0.30 * (1.0 - familiarity_signal)
+        + 0.20 * cx
+        + 0.15 * (1.0 - threshold_signal)
+        + 0.20 * reflective_intent
+        - 0.10 * failure_signal
+    )
+    mods["creativity"] = _clamp01(
+        (1.0 - creativity_alpha) * float(mods.get("creativity", 0.45))
+        + creativity_alpha * creativity_target
+    )
+
     turn_count = int(state.get("turn_count", 0))
     if cold_start_horizon > 0.0 and turn_count < cold_start_horizon:
         cold_phase = (cold_start_horizon - float(turn_count)) / cold_start_horizon
@@ -483,6 +515,8 @@ def step(context: dict, state: dict) -> dict:
     failure_wariness = _effective(float(mods["failure_wariness"]), failure_signal)
     securing = _effective(float(mods["securing"]), securing_target)
     approach = _effective(float(mods["approach"]), approach_target)
+    error_tolerance = _effective(float(mods["error_tolerance"]), error_tolerance_target)
+    creativity = _effective(float(mods["creativity"]), creativity_target)
 
     confidence = _clamp01(
         0.55 * familiarity + 0.25 * (1.0 - ambiguity) + 0.20 * (1.0 - cx)
@@ -490,6 +524,11 @@ def step(context: dict, state: dict) -> dict:
     low_confidence = _clamp01(1.0 - confidence)
     answerability = _clamp01(
         (1.0 - ambiguity) * (1.0 - threshold_signal) * familiarity_signal
+    )
+    verify_intent_proxy = (
+        1.0
+        if reflective_intent >= 0.65 and intent_type in {"factual", "reflective"}
+        else 0.0
     )
 
     weights = _goal_weights(
@@ -525,6 +564,7 @@ def step(context: dict, state: dict) -> dict:
         if action == "act_clarify":
             score += 0.90 * ambiguity - 0.35 * ux - 0.15 * u + 0.20 * threshold
             score += 0.20 * securing
+            score += 0.08 * (1.0 - error_tolerance)
             score -= 0.55 * answerability
             score -= 0.20 * help_short
             score -= 0.15 * anti_redundant
@@ -536,6 +576,7 @@ def step(context: dict, state: dict) -> dict:
             score -= 0.35 * securing + 0.20 * low_confidence
             score += 0.30 * help_short - 0.15 * help_long
             score += 0.45 * answerability
+            score += 0.22 * error_tolerance
             score += 0.16 * help_short
             score += 0.12 * anti_redundant
         elif action == "act_search":
@@ -544,13 +585,19 @@ def step(context: dict, state: dict) -> dict:
                 0.35 * threshold + 0.35 * (1.0 - familiarity) + 0.30 * failure_wariness
             )
             score += 0.15 * securing
+            score += 0.10 * (1.0 - error_tolerance)
+            score += 0.10 * creativity
             score += 0.06 * help_long - 0.08 * help_short
             score -= reflective_search_penalty * reflective_intent
         elif action == "act_verify":
             score += 0.65 * threshold + 0.75 * low_confidence + 0.35 * failure_wariness
             score += 0.15 * cx - 0.20 * u - 0.10 * ambiguity
             score += 0.30 * securing
+            score += 0.55 * (1.0 - error_tolerance)
+            score += 0.08 * (1.0 - creativity)
             score += 0.08 * help_long - 0.10 * help_short
+            score += 0.24 * verify_intent_proxy
+            score += 0.06 * reflective_intent
         elif action == "act_decompose":
             score += 0.45 * cx + 0.45 * res + 0.20 * (1.0 - ambiguity) - 0.15 * u
             score -= 0.25 * ambiguity
@@ -559,11 +606,15 @@ def step(context: dict, state: dict) -> dict:
             if cx < 0.45:
                 score -= 0.35
             score += 0.10 * approach
+            score += 0.12 * creativity
+            score -= 0.08 * (1.0 - error_tolerance)
             score += 0.12 * help_long - 0.12 * help_short
         elif action == "act_think":
             score += 0.35 * cx + 0.25 * ambiguity + 0.35 * approach
             score += 0.10 * low_confidence + 0.10 * (1.0 - u)
             score -= 0.10 * threshold
+            score += 0.26 * creativity
+            score -= 0.14 * (1.0 - error_tolerance)
             score += 0.10 * help_long - 0.08 * help_short
             score += reflective_think_bonus * reflective_intent
             score -= 0.30 * anti_redundant * (0.70 + 0.30 * familiarity)
@@ -647,7 +698,10 @@ def step(context: dict, state: dict) -> dict:
         if ambiguity >= 0.85:
             scores["act_verify"] = -1e9
         elif not (
-            threshold >= 0.45 or low_confidence >= 0.45 or failure_wariness >= 0.35
+            threshold >= 0.45
+            or low_confidence >= 0.45
+            or failure_wariness >= 0.35
+            or verify_intent_proxy >= 1.0
         ):
             scores["act_verify"] = -1e9
 
@@ -743,6 +797,8 @@ def step(context: dict, state: dict) -> dict:
         "failure_wariness": failure_wariness,
         "securing": securing,
         "approach": approach,
+        "error_tolerance": error_tolerance,
+        "creativity": creativity,
         "anti_hallucinate": anti_hall,
         "anti_redundant": anti_redundant,
         "anti_rabbit_hole": anti_rabbit_hole,
