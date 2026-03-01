@@ -208,6 +208,23 @@ def main() -> None:
                 "Quick answer only: define bias-variance tradeoff in two lines.",
             ],
         },
+        {
+            "name": "Session P - all-actions sweep",
+            "queries": [
+                "In one sentence, define overfitting.",
+                "Search for current guidance on diagnosing unstable validation loss and summarize key findings.",
+                "Think briefly and give the most likely cause of model collapse in recursive training loops.",
+                "Break this into ordered implementation steps: evaluate long-horizon knowledge retention under repeated self-training.",
+                "Before answering, verify this claim and include confidence: 'Increasing model size alone prevents collapse.'",
+                "What should I do here?",
+                "Give one-word answer only: capital of Japan.",
+                "Search for source-backed explanations of contradictory LLM benchmark results and summarize concisely.",
+                "Think through two plausible causes of unstable validation loss and pick one best explanation.",
+                "Decompose this into a 6-step plan: compare MCMC and variational inference in a reproducible benchmark.",
+                "Before answering, verify whether this policy changed this week and report uncertainty clearly.",
+                "Can you clarify what you need from me?",
+            ],
+        },
     ]
 
     for session in sessions:

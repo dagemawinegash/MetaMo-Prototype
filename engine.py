@@ -469,6 +469,14 @@ def step(context: dict, state: dict) -> dict:
     failure_signal = float(context.get("failure_signal", 0.0))
     urgent_flag = bool(context.get("urgent", False))
     intent_type = str(context.get("intent_type", "mixed")).strip().lower()
+    verify_request_raw = context.get("verify_request", False)
+    verify_request = False
+    if isinstance(verify_request_raw, bool):
+        verify_request = verify_request_raw
+    elif isinstance(verify_request_raw, str):
+        verify_request = verify_request_raw.strip().lower() in {"true", "yes", "y", "1"}
+    elif isinstance(verify_request_raw, (int, float)):
+        verify_request = bool(verify_request_raw)
     reflective_intent_raw = context.get("reflective_intent", None)
     if reflective_intent_raw is None:
         reflective_intent = (
@@ -577,11 +585,6 @@ def step(context: dict, state: dict) -> dict:
     answerability = _clamp01(
         (1.0 - ambiguity) * (1.0 - threshold_signal) * familiarity_signal
     )
-    verify_intent_proxy = (
-        1.0
-        if reflective_intent >= 0.65 and intent_type in {"factual", "reflective"}
-        else 0.0
-    )
 
     weights = _goal_weights(
         goals=goals,
@@ -653,8 +656,7 @@ def step(context: dict, state: dict) -> dict:
             score += 0.55 * (1.0 - error_tolerance)
             score += 0.08 * (1.0 - creativity)
             score += 0.08 * help_long - 0.10 * help_short
-            score += 0.24 * verify_intent_proxy
-            score += 0.06 * reflective_intent
+            score += 0.32 * (1.0 if verify_request else 0.0)
             score += 0.05 * knowledge
         elif action == "act_decompose":
             score += 0.45 * cx + 0.45 * res + 0.20 * (1.0 - ambiguity) - 0.15 * u
@@ -758,12 +760,21 @@ def step(context: dict, state: dict) -> dict:
         if ambiguity >= 0.85:
             scores["act_verify"] = -1e9
         elif not (
-            threshold >= 0.45
-            or low_confidence >= 0.45
-            or failure_wariness >= 0.35
-            or verify_intent_proxy >= 1.0
+            verify_request
+            or (threshold >= 0.55 and low_confidence >= 0.40)
+            or failure_wariness >= 0.45
         ):
             scores["act_verify"] = -1e9
+
+    # high-complexity research without explicit verify intent should not be pulled into verify
+    if (
+        not verify_request
+        and cx >= 0.70
+        and ambiguity <= 0.65
+        and intent_type in {"mixed", "reflective"}
+        and "act_verify" in scores
+    ):
+        scores["act_verify"] -= 0.20
 
     # keep simple clear prompts on direct response using current-turn risk signals
     # to avoid over-carrying caution from previous risky turns
@@ -774,6 +785,7 @@ def step(context: dict, state: dict) -> dict:
         and failure_signal <= 0.25
         and familiarity_signal >= 0.70
         and low_confidence <= 0.35
+        and not verify_request
     ):
         if "act_verify" in scores:
             scores["act_verify"] = -1e9
@@ -794,6 +806,7 @@ def step(context: dict, state: dict) -> dict:
         and low_confidence <= 0.30
         and familiarity_signal >= 0.80
         and help_short >= 0.55
+        and not verify_request
     ):
         if "act_clarify" in scores:
             scores["act_clarify"] = -1e9
@@ -875,6 +888,7 @@ def step(context: dict, state: dict) -> dict:
         "low_confidence": low_confidence,
         "intent_type": intent_type,
         "reflective_intent": reflective_intent,
+        "verify_request": verify_request,
     }
 
 

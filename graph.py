@@ -37,12 +37,36 @@ class GraphState(TypedDict, total=False):
 # -----------------------------
 
 
+def _get_provider() -> str:
+    provider = os.getenv("LLM_PROVIDER", "gemini").strip().lower()
+    if provider not in {"gemini", "openai"}:
+        raise RuntimeError("Unsupported LLM_PROVIDER. Use 'gemini' or 'openai'.")
+    return provider
+
+
 def _get_model() -> str:
+    provider = _get_provider()
+    if provider == "openai":
+        return os.getenv("OPENAI_MODEL", "gpt-4.1-mini")
     return os.getenv("GEMINI_MODEL", "gemini-3-flash-preview")
 
 
 def _llm() -> Any:
     load_dotenv()
+    provider = _get_provider()
+
+    if provider == "openai":
+        api_key = os.getenv("OPENAI_API_KEY")
+        if not api_key:
+            raise RuntimeError("OPENAI_API_KEY is missing (check .env)")
+        openai_mod = importlib.import_module("langchain_openai")
+        ChatOpenAI = getattr(openai_mod, "ChatOpenAI")
+        return ChatOpenAI(
+            model=_get_model(),
+            temperature=0.3,
+            api_key=api_key,
+        )
+
     api_key = os.getenv("GEMINI_API_KEY")
     if not api_key:
         raise RuntimeError("GEMINI_API_KEY is missing (check .env)")
@@ -83,7 +107,11 @@ def _llm_text(out) -> str:
 
 def node_context_parser(state: GraphState) -> GraphState:
     query = state["query"]
-    ctx = parse_context(query, model=_get_model())
+    ctx = parse_context(
+        query,
+        model=_get_model(),
+        provider=_get_provider(),
+    )
     return {"context": ctx}
 
 
