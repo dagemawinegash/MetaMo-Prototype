@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import os
+
 from graph import build_graph
 from engine import init_state as init_engine_state
 
@@ -225,6 +227,21 @@ def main() -> None:
                 "Can you clarify what you need from me?",
             ],
         },
+        {
+            "name": "Session Q - phase1 novelty-arousal-risk sweep",
+            "queries": [
+                "Give one short definition of regularization.",
+                "Think briefly and suggest one unusual but plausible way to stabilize recursive self-training.",
+                "Explore two creative hypotheses for sudden validation loss spikes after epoch 12.",
+                "Before answering, verify this claim and include confidence: 'Larger models alone prevent collapse.'",
+                "I am in a hurry. Give one-line answer: what is overfitting?",
+                "Design a 5-step plan to test whether synthetic data diversity increases novelty without hurting reliability.",
+                "Search for recent discussions on model collapse causes and summarize key points.",
+                "I think your previous answer was wrong, be careful and verify before answering.",
+                "Think through one high-risk, high-reward research direction, then give one caveat.",
+                "Provide one direct answer: capital of Japan.",
+            ],
+        },
     ]
 
     for session in sessions:
@@ -251,12 +268,15 @@ def main() -> None:
             failure_wariness = float(decision.get("failure_wariness", 0.0))
             securing = float(decision.get("securing", 0.0))
             approach = float(decision.get("approach", 0.0))
+            arousal = float(decision.get("arousal", 0.0))
+            risk_aversion = float(decision.get("risk_aversion", 0.0))
             anti_hall = float(decision.get("anti_hallucinate", 0.0))
             anti_redundant = float(decision.get("anti_redundant", 0.0))
             anti_rabbit_hole = float(decision.get("anti_rabbit_hole", 0.0))
             anti_premature = float(decision.get("anti_premature", 0.0))
             success_moderate = float(decision.get("success_moderate", 0.0))
             knowledge = float(decision.get("knowledge", 0.0))
+            novelty = float(decision.get("novelty", 0.0))
             success_breakthrough = float(decision.get("success_breakthrough", 0.0))
             help_short = float(decision.get("help_short", 0.0))
             help_long = float(decision.get("help_long", 0.0))
@@ -293,12 +313,15 @@ def main() -> None:
                 f"m_fw={float(mods.get('failure_wariness', 0.0)):.2f} "
                 f"m_sec={float(mods.get('securing', 0.0)):.2f} "
                 f"m_app={float(mods.get('approach', 0.0)):.2f} "
+                f"m_aro={float(mods.get('arousal', 0.0)):.2f} "
+                f"m_risk={float(mods.get('risk_aversion', 0.0)):.2f} "
                 f"m_err={float(mods.get('error_tolerance', 0.0)):.2f} "
                 f"m_cre={float(mods.get('creativity', 0.0)):.2f} "
                 f"g_eff={float(goals.get('efficiency', 0.0)):.2f} "
                 f"g_acc={float(goals.get('accuracy', 0.0)):.2f} "
                 f"g_succ_m={float(goals.get('success_moderate', 0.0)):.2f} "
                 f"g_kn={float(goals.get('knowledge', 0.0)):.2f} "
+                f"g_nov={float(goals.get('novelty', 0.0)):.2f} "
                 f"g_succ_b={float(goals.get('success_breakthrough', 0.0)):.2f} "
                 f"g_help_s={float(goals.get('help_short', 0.0)):.2f} "
                 f"g_help={float(goals.get('help_long', 0.0)):.2f} "
@@ -311,11 +334,12 @@ def main() -> None:
                 f"g_anti_p={float(anti_goals.get('premature', 0.0)):.2f} "
                 f"anti_h_now={anti_hall:.2f} anti_r_now={anti_redundant:.2f} anti_rh_now={anti_rabbit_hole:.2f} anti_p_now={anti_premature:.2f} "
                 f"succ_m_now={success_moderate:.2f} "
-                f"kn_now={knowledge:.2f} succ_b_now={success_breakthrough:.2f} "
+                f"kn_now={knowledge:.2f} nov_now={novelty:.2f} succ_b_now={success_breakthrough:.2f} "
                 f"help_s_now={help_short:.2f} help_l_now={help_long:.2f} "
                 f"over_b_now={over_beneficial:.2f} over_s_now={over_safety:.2f} over_h_now={over_honesty:.2f} "
                 f"conf={confidence:.2f} low_conf={low_confidence:.2f} "
                 f"intent={intent_type} refl={reflective_intent:.2f} "
+                f"arousal={arousal:.2f} risk_aversion={risk_aversion:.2f} "
                 f"err_tol={error_tolerance:.2f} creativity={creativity:.2f}"
             )
             print(answer)
