@@ -59,12 +59,12 @@ def init_state() -> dict:
             "risk_aversion_alpha": 0.45,
             "error_tolerance_alpha": 0.40,
             "creativity_alpha": 0.40,
-            "goal_alpha": 0.25,
-            "anti_goal_alpha": 0.20,
+            "goal_alpha": 0.18,
+            "anti_goal_alpha": 0.16,
             "cold_start_horizon": 2.0,
             "cold_start_strength": 0.70,
-            "decompose_min_complexity": 0.80,
-            "decompose_urgent_min_complexity": 0.90,
+            "decompose_min_complexity": 0.60,
+            "decompose_urgent_min_complexity": 0.70,
             "decompose_max_ambiguity": 0.70,
             "reflective_think_bonus": 0.14,
             "reflective_search_penalty": 0.10,
@@ -249,6 +249,17 @@ def _goal_targets(context: dict, decision: dict) -> dict:
         target_efficiency += 0.01
         target_help_long += 0.06
         target_over_beneficial += 0.02
+    elif decision.get("action") == "act_synthesize":
+        target_accuracy += 0.05
+        target_success_moderate += 0.05
+        target_knowledge += 0.08
+        target_novelty += 0.04
+        target_success_breakthrough += 0.05
+        target_help_short -= 0.03
+        target_help_long += 0.07
+        target_over_beneficial += 0.03
+        target_over_safety += 0.03
+        target_over_honesty += 0.04
 
     return {
         "efficiency": _clamp01(target_efficiency),
@@ -318,6 +329,7 @@ def _hallucination_penalty(action: str, cx: float, ambiguity: float) -> float:
         "act_clarify": 0.15,
         "act_decompose": 0.40,
         "act_think": 0.22,
+        "act_synthesize": 0.20,
     }.get(action, 0.50)
     if action == "act_respond":
         base += 0.25 * cx + 0.20 * ambiguity
@@ -341,6 +353,7 @@ def _redundancy_penalty(
         "act_clarify": 0.18,
         "act_decompose": 0.72,
         "act_think": 0.82,
+        "act_synthesize": 0.26,
     }.get(action, 0.35)
 
 
@@ -355,6 +368,7 @@ def _premature_penalty(
         "act_clarify": 0.12,
         "act_decompose": 0.10,
         "act_think": 0.15,
+        "act_synthesize": 0.06,
     }.get(action, 0.20)
 
 
@@ -369,6 +383,7 @@ def _rabbit_hole_penalty(action: str, cx: float, ambiguity: float) -> float:
         "act_respond": 0.10,
         "act_verify": 0.18,
         "act_clarify": 0.14,
+        "act_synthesize": 0.22,
     }.get(action, 0.20)
 
 
@@ -451,6 +466,19 @@ ACTIONS = {
         "over_safety": 0.84,
         "over_honesty": 0.90,
     },
+    "act_synthesize": {
+        "efficiency": 0.30,
+        "accuracy": lambda cx: _clamp01(0.74 + 0.12 * cx),
+        "success_moderate": 0.82,
+        "knowledge": lambda cx: _clamp01(0.78 + 0.16 * cx),
+        "novelty": lambda cx: _clamp01(0.56 + 0.12 * cx),
+        "success_breakthrough": lambda cx: _clamp01(0.54 + 0.14 * cx),
+        "help_short": lambda cx: _clamp01(0.42 + 0.08 * (1.0 - cx)),
+        "help_long": lambda cx: _clamp01(0.72 + 0.18 * cx),
+        "over_beneficial": 0.90,
+        "over_safety": 0.92,
+        "over_honesty": 0.95,
+    },
 }
 
 
@@ -482,9 +510,9 @@ def step(context: dict, state: dict) -> dict:
     creativity_alpha = float(params.get("creativity_alpha", 0.40))
     cold_start_horizon = float(params.get("cold_start_horizon", 2.0))
     cold_start_strength = float(params.get("cold_start_strength", 0.70))
-    decompose_min_complexity = float(params.get("decompose_min_complexity", 0.80))
+    decompose_min_complexity = float(params.get("decompose_min_complexity", 0.60))
     decompose_urgent_min_complexity = float(
-        params.get("decompose_urgent_min_complexity", 0.90)
+        params.get("decompose_urgent_min_complexity", 0.70)
     )
     decompose_max_ambiguity = float(params.get("decompose_max_ambiguity", 0.70))
     reflective_think_bonus = float(params.get("reflective_think_bonus", 0.14))
@@ -523,6 +551,13 @@ def step(context: dict, state: dict) -> dict:
         )
     else:
         reflective_intent = _clamp01(float(reflective_intent_raw))
+    needs_external_evidence = _clamp01(
+        float(context.get("needs_external_evidence", 0.3))
+    )
+    needs_task_plan = _clamp01(float(context.get("needs_task_plan", 0.2)))
+    needs_multi_source_integration = _clamp01(
+        float(context.get("needs_multi_source_integration", 0.3))
+    )
 
     mods["resolution"] = _clamp01(
         (1.0 - resolution_alpha) * float(mods.get("resolution", 0.4))
@@ -717,6 +752,9 @@ def step(context: dict, state: dict) -> dict:
             score += 0.10 * creativity
             score += 0.06 * help_long - 0.08 * help_short
             score += 0.14 * knowledge + 0.12 * novelty + 0.08 * success_breakthrough
+            score += 0.50 * needs_external_evidence
+            score += 0.12 * needs_multi_source_integration
+            score -= 0.08 * needs_task_plan
             score -= reflective_search_penalty * reflective_intent
         elif action == "act_verify":
             score += 0.65 * threshold + 0.75 * low_confidence + 0.35 * failure_wariness
@@ -730,18 +768,21 @@ def step(context: dict, state: dict) -> dict:
             score += 0.32 * (1.0 if verify_request else 0.0)
             score += 0.05 * knowledge
         elif action == "act_decompose":
-            score += 0.45 * cx + 0.45 * res + 0.20 * (1.0 - ambiguity) - 0.15 * u
-            score -= 0.25 * ambiguity
-            if cx >= 0.75 and ambiguity <= 0.45:
-                score += 0.45
-            if cx < 0.45:
+            score += 0.30 * cx + 0.30 * res + 0.10 * (1.0 - ambiguity) - 0.12 * u
+            score -= 0.28 * ambiguity
+            if cx >= 0.60 and ambiguity <= 0.60:
+                score += 0.10
+            if cx < 0.35:
                 score -= 0.35
             score += 0.10 * approach
             score += 0.10 * arousal
-            score += 0.12 * creativity
+            score += 0.08 * creativity
             score -= 0.08 * (1.0 - error_tolerance)
             score += 0.12 * help_long - 0.12 * help_short
-            score += 0.12 * knowledge + 0.10 * novelty + 0.15 * success_breakthrough
+            score += 0.08 * knowledge + 0.06 * novelty + 0.10 * success_breakthrough
+            score += 0.24 * needs_task_plan
+            score -= 0.12 * needs_external_evidence
+            score += 0.02 * needs_multi_source_integration
         elif action == "act_think":
             score += 0.35 * cx + 0.25 * ambiguity + 0.35 * approach
             score += 0.10 * low_confidence + 0.10 * (1.0 - u)
@@ -767,6 +808,25 @@ def step(context: dict, state: dict) -> dict:
                 and (ambiguity >= 0.22 or low_confidence >= 0.28)
             ):
                 score += 0.03
+        elif action == "act_synthesize":
+            score += 0.24 * cx + 0.12 * res - 0.10 * u
+            score += 0.16 * (1.0 - ambiguity) + 0.14 * (1.0 - familiarity)
+            score += 0.12 * approach + 0.08 * arousal + 0.16 * creativity
+            score += 0.06 * (1.0 - low_confidence)
+            score += 0.12 * knowledge + 0.08 * novelty + 0.10 * success_breakthrough
+            score += 0.14 * help_long - 0.10 * help_short
+            score -= 0.12 * risk_aversion
+            score -= 0.18 * threshold
+            score -= 0.16 * failure_wariness
+            score += 0.55 * needs_multi_source_integration
+            score -= 0.12 * needs_external_evidence
+            score -= 0.18 * needs_task_plan
+            if cx >= 0.55 and ambiguity <= 0.60:
+                score += 0.16
+            if ambiguity >= 0.80:
+                score -= 0.28
+            if verify_request:
+                score -= 0.25
 
         score -= anti_hall * _hallucination_penalty(action, cx=cx, ambiguity=ambiguity)
         score -= (
@@ -781,10 +841,13 @@ def step(context: dict, state: dict) -> dict:
             )
             * (0.60 + 0.40 * threshold)
         )
+        rabbit_hole_scale = 0.40 + 0.22 * help_short
+        if action == "act_decompose":
+            rabbit_hole_scale *= 1.0 - 0.35 * needs_task_plan
         score -= (
             anti_rabbit_hole
             * _rabbit_hole_penalty(action, cx=cx, ambiguity=ambiguity)
-            * (0.40 + 0.22 * help_short)
+            * rabbit_hole_scale
         )
 
         safety_risk = {
@@ -795,6 +858,7 @@ def step(context: dict, state: dict) -> dict:
             "act_verify": 0.08,
             "act_clarify": 0.10,
             "act_decompose": 0.25,
+            "act_synthesize": 0.12,
         }.get(action, 0.30)
         honesty_risk = {
             "act_respond": _clamp01(0.40 + 0.30 * low_confidence + 0.15 * ambiguity),
@@ -802,6 +866,7 @@ def step(context: dict, state: dict) -> dict:
             "act_verify": 0.05,
             "act_clarify": 0.10,
             "act_decompose": 0.16,
+            "act_synthesize": 0.08,
         }.get(action, 0.20)
 
         score -= over_safety * safety_risk * (0.65 + 0.35 * securing)
@@ -814,6 +879,7 @@ def step(context: dict, state: dict) -> dict:
             "act_verify": 0.06,
             "act_clarify": 0.10,
             "act_decompose": 0.18,
+            "act_synthesize": 0.10,
         }.get(action, 0.20)
         score -= over_beneficial * beneficial_risk * (0.60 + 0.40 * securing)
 
@@ -826,6 +892,84 @@ def step(context: dict, state: dict) -> dict:
         cx < decompose_min or ambiguity >= decompose_max_ambiguity
     ) and "act_decompose" in scores:
         scores["act_decompose"] = -1e9
+    if "act_decompose" in scores:
+        if (
+            needs_task_plan < 0.45
+            and not (cx >= 0.78 and ambiguity <= 0.35 and reflective_intent >= 0.75)
+        ):
+            scores["act_decompose"] = -1e9
+        elif needs_external_evidence >= 0.75 and needs_task_plan <= 0.55:
+            scores["act_decompose"] -= 0.30
+        if needs_task_plan >= 0.60:
+            scores["act_decompose"] += 0.10
+        elif needs_task_plan <= 0.18 and cx < 0.55:
+            scores["act_decompose"] -= 0.30
+
+    if "act_search" in scores:
+        if needs_external_evidence >= 0.60:
+            scores["act_search"] += 0.30
+            if needs_task_plan <= 0.45:
+                scores["act_search"] += 0.12
+        elif needs_external_evidence <= 0.22 and not verify_request:
+            scores["act_search"] -= 0.18
+
+    if "act_synthesize" in scores:
+        if needs_multi_source_integration >= 0.65:
+            scores["act_synthesize"] += 0.20
+        elif needs_multi_source_integration < 0.65 and not verify_request:
+            scores["act_synthesize"] = -1e9
+        if needs_task_plan >= 0.70 and needs_task_plan >= needs_multi_source_integration:
+            scores["act_synthesize"] -= 0.22
+        if needs_external_evidence >= 0.85 and needs_task_plan <= 0.45:
+            scores["act_synthesize"] -= 0.15
+
+    # Semantic arbitration among search/decompose/synthesize using continuous context signals.
+    if (
+        "act_search" in scores
+        and "act_decompose" in scores
+        and "act_synthesize" in scores
+        and scores["act_search"] > -1e8
+        and scores["act_decompose"] > -1e8
+    ):
+        if (
+            needs_external_evidence >= 0.70
+            and needs_external_evidence >= needs_task_plan + 0.15
+            and needs_external_evidence >= needs_multi_source_integration - 0.02
+        ):
+            scores["act_search"] += 0.26
+            scores["act_decompose"] -= 0.26
+            if scores["act_synthesize"] > -1e8:
+                scores["act_synthesize"] -= 0.12
+        elif (
+            needs_task_plan >= 0.72
+            and needs_task_plan >= needs_external_evidence + 0.18
+            and needs_task_plan >= needs_multi_source_integration + 0.12
+        ):
+            scores["act_decompose"] += 0.18
+            scores["act_search"] -= 0.12
+            if scores["act_synthesize"] > -1e8:
+                scores["act_synthesize"] -= 0.10
+        elif (
+            scores["act_synthesize"] > -1e8
+            and needs_multi_source_integration >= 0.72
+            and needs_multi_source_integration >= needs_task_plan + 0.15
+        ):
+            scores["act_synthesize"] += 0.16
+            scores["act_decompose"] -= 0.16
+
+    if (
+        "act_search" in scores
+        and "act_synthesize" in scores
+        and scores["act_search"] > -1e8
+        and scores["act_synthesize"] > -1e8
+    ):
+        if (
+            needs_external_evidence >= 0.85
+            and needs_multi_source_integration >= 0.75
+            and needs_task_plan <= 0.55
+        ):
+            scores["act_search"] += 0.18
+            scores["act_synthesize"] -= 0.18
 
     # clarify vs verify split
     # very high ambiguity => clarify (missing specifics)
@@ -840,6 +984,11 @@ def step(context: dict, state: dict) -> dict:
         ):
             scores["act_verify"] = -1e9
 
+    if verify_request and "act_verify" in scores:
+        scores["act_verify"] += 0.45
+        if "act_synthesize" in scores:
+            scores["act_synthesize"] -= 0.35
+
     # high-complexity research without explicit verify intent should not be pulled into verify
     if (
         not verify_request
@@ -849,6 +998,21 @@ def step(context: dict, state: dict) -> dict:
         and "act_verify" in scores
     ):
         scores["act_verify"] -= 0.20
+
+    if (
+        intent_type == "factual"
+        and not verify_request
+        and ambiguity <= 0.55
+        and cx >= 0.45
+        and "act_search" in scores
+    ):
+        scores["act_search"] += 0.20
+
+    if ambiguity >= 0.75 and not verify_request:
+        if "act_clarify" in scores:
+            scores["act_clarify"] += 0.24
+        if "act_synthesize" in scores:
+            scores["act_synthesize"] -= 0.35
 
     # keep simple clear prompts on direct response using current-turn risk signals
     # to avoid over-carrying caution from previous risky turns
@@ -897,6 +1061,25 @@ def step(context: dict, state: dict) -> dict:
     ):
         scores["act_think"] = -1e9
 
+    if "act_synthesize" in scores and not (
+        (
+            cx >= 0.68
+            and ambiguity <= 0.55
+            and threshold <= 0.55
+            and failure_wariness <= 0.35
+            and not verify_request
+        )
+        or (
+            cx >= 0.72
+            and reflective_intent >= 0.70
+            and ambiguity <= 0.60
+            and threshold <= 0.60
+            and failure_wariness <= 0.35
+            and not verify_request
+        )
+    ):
+        scores["act_synthesize"] = -1e9
+
     search_score = float(scores.get("act_search", -1e9))
     think_score = float(scores.get("act_think", -1e9))
     if (
@@ -917,6 +1100,7 @@ def step(context: dict, state: dict) -> dict:
         scores[preferred] = max(search_score, think_score) + intent_margin + 1e-4
 
     best_action = max(scores, key=scores.get)
+    top_scores = sorted(scores.items(), key=lambda kv: kv[1], reverse=True)[:3]
     reason = ""
     if best_action == "act_respond":
         reason = "Efficiency prevails."
@@ -928,6 +1112,8 @@ def step(context: dict, state: dict) -> dict:
         reason = "Complex task benefits from decomposition."
     elif best_action == "act_think":
         reason = "Reflective thinking improves answer quality."
+    elif best_action == "act_synthesize":
+        reason = "Synthesis best combines complex evidence coherently."
     else:
         reason = "Ambiguity requires clarification."
 
@@ -966,14 +1152,18 @@ def step(context: dict, state: dict) -> dict:
         "intent_type": intent_type,
         "reflective_intent": reflective_intent,
         "verify_request": verify_request,
+        "needs_external_evidence": needs_external_evidence,
+        "needs_task_plan": needs_task_plan,
+        "needs_multi_source_integration": needs_multi_source_integration,
+        "score_top3": top_scores,
     }
 
 
 def post_update(context: dict, state: dict, decision: dict) -> dict:
     goals = state["goals"]
     anti_goals = state.get("anti_goals")
-    alpha = float(state["params"].get("goal_alpha", 0.25))
-    anti_alpha = float(state["params"].get("anti_goal_alpha", 0.20))
+    alpha = float(state["params"].get("goal_alpha", 0.18))
+    anti_alpha = float(state["params"].get("anti_goal_alpha", 0.16))
     targets = _goal_targets(context, decision)
 
     goals["efficiency"] = _blend(

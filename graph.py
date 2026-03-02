@@ -19,6 +19,7 @@ Action = Literal[
     "act_clarify",
     "act_decompose",
     "act_think",
+    "act_synthesize",
 ]
 
 
@@ -165,6 +166,20 @@ def node_prompt_shaper(state: GraphState) -> GraphState:
         system = (
             "You are Qwestor. Think through the problem briefly before answering. "
             "Present a concise, reasoned answer with one caveat if uncertainty exists. "
+            "Do not ask a clarifying question unless essential details are missing and no reasonable assumption is possible. "
+            "Do not add greetings or self-introductions."
+        )
+    elif decision["action"] == "act_search":
+        system = (
+            "You are Qwestor. Provide evidence-first output. "
+            "List concise findings and clearly mark what still needs verification. "
+            "Do not produce a fully synthesized final conclusion. "
+            "Do not add greetings or self-introductions."
+        )
+    elif decision["action"] == "act_synthesize":
+        system = (
+            "You are Qwestor. Synthesize multiple findings into one coherent answer. "
+            "Highlight agreements, key differences, and one concise caveat about uncertainty. "
             "Do not add greetings or self-introductions."
         )
     else:
@@ -236,6 +251,21 @@ def node_research_synthesis(state: GraphState) -> GraphState:
     return {"answer": _llm_text(out)}
 
 
+def node_search_evidence(state: GraphState) -> GraphState:
+    llm = _llm()
+    findings_text = "\n".join(f"- {f}" for f in state.get("findings", []))
+    prompt = (
+        state["system_prompt"]
+        + "\n\nEvidence notes gathered:\n"
+        + findings_text
+        + "\n\nUser query: "
+        + state["query"]
+        + "\n\nReturn only: (1) key evidence bullets, (2) open uncertainties."
+    )
+    out = llm.invoke(prompt)
+    return {"answer": _llm_text(out)}
+
+
 def node_verify_synthesis(state: GraphState) -> GraphState:
     llm = _llm()
     findings_text = "\n".join(f"- {f}" for f in state.get("findings", []))
@@ -278,6 +308,7 @@ def build_graph():
     graph.add_node("decompose", node_decompose)
     graph.add_node("think", node_think)
     graph.add_node("simulated_search", node_simulated_search)
+    graph.add_node("search_evidence", node_search_evidence)
     graph.add_node("research_synthesis", node_research_synthesis)
     graph.add_node("verify_synthesis", node_verify_synthesis)
     graph.add_node("post_update", node_post_update)
@@ -296,6 +327,7 @@ def build_graph():
             "act_think": "think",
             "act_search": "simulated_search",
             "act_verify": "simulated_search",
+            "act_synthesize": "simulated_search",
         },
     )
 
@@ -307,13 +339,12 @@ def build_graph():
         "simulated_search",
         route_action,
         {
-            "act_search": "research_synthesis",
+            "act_search": "search_evidence",
             "act_verify": "verify_synthesis",
-            "act_respond": "research_synthesis",
-            "act_clarify": "research_synthesis",
-            "act_decompose": "research_synthesis",
+            "act_synthesize": "research_synthesis",
         },
     )
+    graph.add_edge("search_evidence", "post_update")
     graph.add_edge("research_synthesis", "post_update")
     graph.add_edge("verify_synthesis", "post_update")
     graph.add_edge("post_update", END)

@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import os
-
 from graph import build_graph
 from engine import init_state as init_engine_state
 
@@ -228,7 +226,7 @@ def main() -> None:
             ],
         },
         {
-            "name": "Session Q - phase1 novelty-arousal-risk sweep",
+            "name": "Session Q - novelty-arousal-risk sweep",
             "queries": [
                 "Give one short definition of regularization.",
                 "Think briefly and suggest one unusual but plausible way to stabilize recursive self-training.",
@@ -240,6 +238,23 @@ def main() -> None:
                 "I think your previous answer was wrong, be careful and verify before answering.",
                 "Think through one high-risk, high-reward research direction, then give one caveat.",
                 "Provide one direct answer: capital of Japan.",
+            ],
+        },
+        {
+            "name": "Session R - all-actions sweep",
+            "queries": [
+                "What is the capital of Japan?",
+                "Search for recent guidance on diagnosing unstable validation loss and summarize key points.",
+                "Before answering, verify this claim and state confidence: 'Increasing batch size always stabilizes training.'",
+                "Can you clarify what exact setting and constraints I should provide for this ML issue?",
+                "Break this into ordered implementation steps: evaluate whether synthetic data diversity improves robustness.",
+                "Think briefly and give the most likely cause of sudden validation loss spikes after epoch 12.",
+                "Synthesize multiple viewpoints on model collapse into one coherent conclusion with one caveat.",
+                "Give me one short definition of regularization.",
+                "Search for source-backed explanations of contradictory benchmark results and summarize concisely.",
+                "I think your previous answer was wrong; verify before answering and be explicit about uncertainty.",
+                "I need help with this.",
+                "Decompose this into a 6-step plan: compare MCMC and variational inference in a reproducible benchmark.",
             ],
         },
     ]
@@ -287,8 +302,16 @@ def main() -> None:
             low_confidence = float(decision.get("low_confidence", 0.0))
             intent_type = str(decision.get("intent_type", "mixed"))
             reflective_intent = float(decision.get("reflective_intent", 0.0))
+            needs_external_evidence = float(
+                decision.get("needs_external_evidence", 0.0)
+            )
+            needs_task_plan = float(decision.get("needs_task_plan", 0.0))
+            needs_multi_source_integration = float(
+                decision.get("needs_multi_source_integration", 0.0)
+            )
             error_tolerance = float(decision.get("error_tolerance", 0.0))
             creativity = float(decision.get("creativity", 0.0))
+            score_top3 = decision.get("score_top3", [])
             complexity = float(ctx.get("complexity", 0.0))
             ambiguity = float(ctx.get("ambiguity", 0.0))
             expertise = float(ctx.get("expertise", 0.0))
@@ -297,6 +320,13 @@ def main() -> None:
             failure_signal = float(ctx.get("failure_signal", 0.0))
             intent_type_signal = str(ctx.get("intent_type", "mixed"))
             reflective_intent_signal = float(ctx.get("reflective_intent", 0.0))
+            needs_external_evidence_signal = float(
+                ctx.get("needs_external_evidence", 0.0)
+            )
+            needs_task_plan_signal = float(ctx.get("needs_task_plan", 0.0))
+            needs_multi_source_integration_signal = float(
+                ctx.get("needs_multi_source_integration", 0.0)
+            )
             answer = out.get("answer", "")
 
             print(
@@ -304,6 +334,9 @@ def main() -> None:
                 f"cx={complexity:.2f} amb={ambiguity:.2f} exp={expertise:.2f} "
                 f"thr_s={threshold_signal:.2f} fam_s={topic_familiarity_signal:.2f} fail_s={failure_signal:.2f} "
                 f"intent_s={intent_type_signal} refl_s={reflective_intent_signal:.2f} "
+                f"evid_s={needs_external_evidence_signal:.2f} "
+                f"plan_s={needs_task_plan_signal:.2f} "
+                f"multi_s={needs_multi_source_integration_signal:.2f} "
                 f"u={urgency:.2f} r={resolution:.2f} ux={user_expertise:.2f} "
                 f"thr={threshold:.2f} fam={topic_familiarity:.2f} fw={failure_wariness:.2f} sec={securing:.2f} app={approach:.2f} "
                 f"m_r={float(mods.get('resolution', 0.0)):.2f} "
@@ -339,9 +372,26 @@ def main() -> None:
                 f"over_b_now={over_beneficial:.2f} over_s_now={over_safety:.2f} over_h_now={over_honesty:.2f} "
                 f"conf={confidence:.2f} low_conf={low_confidence:.2f} "
                 f"intent={intent_type} refl={reflective_intent:.2f} "
+                f"evid={needs_external_evidence:.2f} "
+                f"plan={needs_task_plan:.2f} "
+                f"multi={needs_multi_source_integration:.2f} "
                 f"arousal={arousal:.2f} risk_aversion={risk_aversion:.2f} "
                 f"err_tol={error_tolerance:.2f} creativity={creativity:.2f}"
             )
+            if isinstance(score_top3, list) and score_top3:
+                score_parts = []
+                for item in score_top3:
+                    if (
+                        isinstance(item, (list, tuple))
+                        and len(item) == 2
+                        and isinstance(item[0], str)
+                    ):
+                        try:
+                            score_parts.append(f"{item[0]}={float(item[1]):.3f}")
+                        except Exception:
+                            continue
+                if score_parts:
+                    print("scores_top3: " + " | ".join(score_parts))
             print(answer)
             print("-" * 60)
 
