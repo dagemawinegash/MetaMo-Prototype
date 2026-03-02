@@ -31,7 +31,6 @@ def parse_context(
     load_dotenv()
     active_provider = (provider or _get_provider()).strip().lower()
     active_model = model or _get_model(active_provider)
-
     if active_provider == "openai":
         api_key = os.getenv("OPENAI_API_KEY")
         if not api_key:
@@ -40,6 +39,7 @@ def parse_context(
         api_key = os.getenv("GEMINI_API_KEY")
         if not api_key:
             raise RuntimeError("GEMINI_API_KEY is missing (check .env)")
+    # print(active_provider)
 
     last_error = ""
     for attempt in range(3):

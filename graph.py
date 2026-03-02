@@ -39,6 +39,7 @@ class GraphState(TypedDict, total=False):
 
 
 def _get_provider() -> str:
+    load_dotenv()
     provider = os.getenv("LLM_PROVIDER", "gemini").strip().lower()
     if provider not in {"gemini", "openai"}:
         raise RuntimeError("Unsupported LLM_PROVIDER. Use 'gemini' or 'openai'.")

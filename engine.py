@@ -28,6 +28,8 @@ def init_state() -> dict:
             "novelty": 0.46,
             "success_breakthrough": 0.44,
             "coherence": 0.58,
+            "originality": 0.48,
+            "social": 0.50,
             "help_short": 0.55,
             "help_long": 0.45,
             "over_beneficial": 0.60,
@@ -133,6 +135,20 @@ def _goal_weights(
         + 0.10 * (1.0 - urgency)
         + 0.08 * _clamp01((valence + 1.0) * 0.5)
     )
+    originality_base = float(goals.get("originality", 0.48)) * (
+        0.45
+        + 0.40 * complexity
+        + 0.30 * resolution
+        + 0.20 * _clamp01((valence + 1.0) * 0.5)
+        - 0.15 * urgency
+        - 0.10 * threshold
+    )
+    social_base = float(goals.get("social", 0.50)) * (
+        0.55
+        + 0.35 * (1.0 - low_confidence)
+        + 0.20 * urgency
+        + 0.10 * _clamp01((valence + 1.0) * 0.5)
+    )
     beneficial_base = float(goals.get("over_beneficial", 0.60)) * (
         0.60 + 0.45 * threshold + 0.40 * securing + 0.30 * low_confidence
     )
@@ -150,6 +166,8 @@ def _goal_weights(
         "novelty": novelty_base,
         "success_breakthrough": breakthrough_base,
         "coherence": coherence_base,
+        "originality": originality_base,
+        "social": social_base,
         "help_short": short_help_base,
         "help_long": float(goals["help_long"])
         * (0.55 + 0.65 * resolution + 0.30 * complexity),
@@ -208,6 +226,21 @@ def _goal_targets(context: dict, decision: dict) -> dict:
         + 0.20 * float(context.get("threshold", 0.3))
         + (0.10 if not urgent else 0.0)
     )
+    target_originality = (
+        0.30
+        + 0.40 * cx
+        + 0.25 * float(context.get("reflective_intent", 0.5))
+        + 0.20 * (1.0 - float(context.get("topic_familiarity", 0.5)))
+        + 0.10 * ambiguity
+        - (0.08 if urgent else 0.0)
+    )
+    target_social = (
+        0.35
+        + 0.30 * ambiguity
+        + 0.20 * float(context.get("failure_signal", 0.0))
+        + 0.20 * (1.0 - float(context.get("expertise", 0.5)))
+        + (0.10 if urgent else 0.0)
+    )
     target_help_short = (
         0.35 + 0.35 * (1.0 - cx) + 0.20 * (1.0 - ambiguity) + (0.10 if urgent else 0.0)
     )
@@ -229,6 +262,8 @@ def _goal_targets(context: dict, decision: dict) -> dict:
         target_novelty += 0.06
         target_success_breakthrough += 0.04
         target_coherence += 0.01
+        target_originality += 0.03
+        target_social += 0.01
         target_help_short -= 0.02
     elif decision.get("action") == "act_verify":
         target_accuracy += 0.06
@@ -237,6 +272,8 @@ def _goal_targets(context: dict, decision: dict) -> dict:
         target_novelty -= 0.04
         target_success_breakthrough += 0.01
         target_coherence += 0.06
+        target_originality -= 0.03
+        target_social += 0.07
         target_help_short -= 0.03
         target_help_long += 0.02
         target_over_beneficial += 0.05
@@ -249,6 +286,8 @@ def _goal_targets(context: dict, decision: dict) -> dict:
         target_novelty += 0.08
         target_success_breakthrough += 0.06
         target_coherence += 0.02
+        target_originality += 0.07
+        target_social += 0.01
         target_help_short -= 0.02
         target_help_long += 0.04
         target_over_beneficial += 0.03
@@ -260,6 +299,8 @@ def _goal_targets(context: dict, decision: dict) -> dict:
         target_novelty -= 0.04
         target_success_breakthrough -= 0.04
         target_coherence += 0.02
+        target_originality -= 0.04
+        target_social += 0.06
         target_help_short += 0.08
         target_help_long -= 0.02
         target_over_safety -= 0.02
@@ -269,6 +310,8 @@ def _goal_targets(context: dict, decision: dict) -> dict:
         target_knowledge += 0.01
         target_novelty -= 0.01
         target_coherence += 0.05
+        target_originality -= 0.02
+        target_social += 0.08
         target_help_short += 0.03
         target_over_beneficial += 0.03
         target_over_honesty += 0.04
@@ -279,6 +322,8 @@ def _goal_targets(context: dict, decision: dict) -> dict:
         target_novelty += 0.05
         target_success_breakthrough += 0.08
         target_coherence += 0.04
+        target_originality += 0.05
+        target_social += 0.04
         target_help_short -= 0.04
         target_efficiency += 0.01
         target_help_long += 0.06
@@ -290,6 +335,8 @@ def _goal_targets(context: dict, decision: dict) -> dict:
         target_novelty += 0.04
         target_success_breakthrough += 0.05
         target_coherence += 0.05
+        target_originality += 0.08
+        target_social += 0.05
         target_help_short -= 0.03
         target_help_long += 0.07
         target_over_beneficial += 0.03
@@ -304,6 +351,8 @@ def _goal_targets(context: dict, decision: dict) -> dict:
         "novelty": _clamp01(target_novelty),
         "success_breakthrough": _clamp01(target_success_breakthrough),
         "coherence": _clamp01(target_coherence),
+        "originality": _clamp01(target_originality),
+        "social": _clamp01(target_social),
         "help_short": _clamp01(target_help_short),
         "help_long": _clamp01(target_help_long),
         "over_beneficial": _clamp01(target_over_beneficial),
@@ -432,6 +481,8 @@ ACTIONS = {
         "novelty": lambda cx: _clamp01(0.18 + 0.10 * cx),
         "success_breakthrough": lambda cx: _clamp01(0.18 + 0.12 * cx),
         "coherence": lambda cx: _clamp01(0.72 - 0.10 * cx),
+        "originality": lambda cx: _clamp01(0.16 + 0.10 * cx),
+        "social": lambda cx: _clamp01(0.74 + 0.08 * (1.0 - cx)),
         "help_short": lambda cx: _clamp01(0.95 - 0.20 * cx),
         "help_long": lambda cx: _clamp01(0.25 + 0.20 * cx),
         "over_beneficial": lambda cx: _clamp01(0.45 - 0.15 * cx),
@@ -446,6 +497,8 @@ ACTIONS = {
         "novelty": lambda cx: _clamp01(0.28 + 0.12 * cx),
         "success_breakthrough": lambda cx: _clamp01(0.28 + 0.12 * cx),
         "coherence": 0.82,
+        "originality": lambda cx: _clamp01(0.18 + 0.10 * cx),
+        "social": 0.95,
         "help_short": lambda cx: _clamp01(0.55 + 0.10 * (1.0 - cx)),
         "help_long": lambda cx: _clamp01(0.40 + 0.20 * cx),
         "over_beneficial": 0.85,
@@ -460,6 +513,8 @@ ACTIONS = {
         "novelty": lambda cx: _clamp01(0.58 + 0.18 * cx),
         "success_breakthrough": lambda cx: _clamp01(0.45 + 0.18 * cx),
         "coherence": 0.58,
+        "originality": lambda cx: _clamp01(0.48 + 0.16 * cx),
+        "social": lambda cx: _clamp01(0.42 + 0.12 * (1.0 - cx)),
         "help_short": lambda cx: _clamp01(0.35 + 0.10 * (1.0 - cx)),
         "help_long": lambda cx: _clamp01(0.55 + 0.35 * cx),
         "over_beneficial": 0.72,
@@ -474,6 +529,8 @@ ACTIONS = {
         "novelty": lambda cx: _clamp01(0.25 + 0.08 * cx),
         "success_breakthrough": lambda cx: _clamp01(0.38 + 0.10 * cx),
         "coherence": 0.86,
+        "originality": lambda cx: _clamp01(0.24 + 0.08 * cx),
+        "social": 0.88,
         "help_short": lambda cx: _clamp01(0.40 + 0.10 * (1.0 - cx)),
         "help_long": lambda cx: _clamp01(0.50 + 0.20 * cx),
         "over_beneficial": 0.96,
@@ -488,6 +545,8 @@ ACTIONS = {
         "novelty": lambda cx: _clamp01(0.62 + 0.18 * cx),
         "success_breakthrough": lambda cx: _clamp01(0.62 + 0.22 * cx),
         "coherence": 0.80,
+        "originality": lambda cx: _clamp01(0.66 + 0.18 * cx),
+        "social": 0.72,
         "help_short": lambda cx: _clamp01(0.30 + 0.05 * (1.0 - cx)),
         "help_long": lambda cx: _clamp01(0.70 + 0.25 * cx),
         "over_beneficial": 0.70,
@@ -502,6 +561,8 @@ ACTIONS = {
         "novelty": lambda cx: _clamp01(0.70 + 0.18 * cx),
         "success_breakthrough": lambda cx: _clamp01(0.68 + 0.20 * cx),
         "coherence": 0.74,
+        "originality": lambda cx: _clamp01(0.74 + 0.16 * cx),
+        "social": 0.58,
         "help_short": lambda cx: _clamp01(0.35 + 0.10 * (1.0 - cx)),
         "help_long": lambda cx: _clamp01(0.60 + 0.25 * cx),
         "over_beneficial": 0.78,
@@ -516,6 +577,8 @@ ACTIONS = {
         "novelty": lambda cx: _clamp01(0.56 + 0.12 * cx),
         "success_breakthrough": lambda cx: _clamp01(0.54 + 0.14 * cx),
         "coherence": 0.84,
+        "originality": lambda cx: _clamp01(0.82 + 0.12 * cx),
+        "social": 0.68,
         "help_short": lambda cx: _clamp01(0.42 + 0.08 * (1.0 - cx)),
         "help_long": lambda cx: _clamp01(0.72 + 0.18 * cx),
         "over_beneficial": 0.90,
@@ -759,6 +822,8 @@ def step(context: dict, state: dict) -> dict:
     novelty = float(goals.get("novelty", 0.46))
     success_breakthrough = float(goals.get("success_breakthrough", 0.44))
     coherence = float(goals.get("coherence", 0.58))
+    originality = float(goals.get("originality", 0.48))
+    social = float(goals.get("social", 0.50))
     help_short = float(goals.get("help_short", 0.55))
     help_long = float(goals.get("help_long", 0.45))
     over_beneficial = float(goals.get("over_beneficial", 0.60))
@@ -779,6 +844,7 @@ def step(context: dict, state: dict) -> dict:
             score += 0.90 * ambiguity - 0.35 * ux - 0.15 * u + 0.20 * threshold
             score += 0.20 * securing
             score += 0.10 * coherence - 0.08 * valence
+            score += 0.22 * social - 0.06 * originality
             score += 0.08 * (1.0 - error_tolerance)
             score -= 0.55 * answerability
             score -= 0.20 * help_short
@@ -791,6 +857,7 @@ def step(context: dict, state: dict) -> dict:
             score -= 0.35 * securing + 0.20 * low_confidence
             score += 0.10 * (1.0 - arousal)
             score += 0.12 * coherence + 0.10 * valence
+            score += 0.14 * social - 0.06 * originality
             score -= 0.18 * risk_aversion
             score += 0.30 * help_short - 0.15 * help_long
             score += 0.45 * answerability
@@ -807,6 +874,7 @@ def step(context: dict, state: dict) -> dict:
             score += 0.15 * securing
             score += 0.08 * arousal
             score += 0.06 * coherence + 0.02 * valence
+            score += 0.10 * originality + 0.06 * social
             score += 0.08 * (1.0 - risk_aversion)
             score += 0.10 * (1.0 - error_tolerance)
             score += 0.10 * creativity
@@ -821,6 +889,7 @@ def step(context: dict, state: dict) -> dict:
             score += 0.15 * cx - 0.20 * u - 0.10 * ambiguity
             score += 0.30 * securing
             score += 0.14 * coherence - 0.14 * valence
+            score += 0.10 * social - 0.08 * originality
             score += 0.25 * risk_aversion
             score -= 0.08 * arousal
             score += 0.55 * (1.0 - error_tolerance)
@@ -838,6 +907,7 @@ def step(context: dict, state: dict) -> dict:
             score += 0.10 * approach
             score += 0.10 * arousal
             score += 0.10 * coherence + 0.04 * valence
+            score += 0.12 * originality + 0.08 * social
             score += 0.08 * creativity
             score -= 0.08 * (1.0 - error_tolerance)
             score += 0.12 * help_long - 0.12 * help_short
@@ -851,6 +921,7 @@ def step(context: dict, state: dict) -> dict:
             score -= 0.10 * threshold
             score += 0.20 * arousal
             score += 0.08 * coherence + 0.02 * valence
+            score += 0.14 * originality + 0.04 * social
             score += 0.10 * (1.0 - risk_aversion)
             score += 0.26 * creativity
             score -= 0.14 * (1.0 - error_tolerance)
@@ -876,6 +947,7 @@ def step(context: dict, state: dict) -> dict:
             score += 0.16 * (1.0 - ambiguity) + 0.14 * (1.0 - familiarity)
             score += 0.12 * approach + 0.08 * arousal + 0.16 * creativity
             score += 0.16 * coherence + 0.08 * valence
+            score += 0.22 * originality + 0.10 * social
             score += 0.06 * (1.0 - low_confidence)
             score += 0.12 * knowledge + 0.08 * novelty + 0.10 * success_breakthrough
             score += 0.14 * help_long - 0.10 * help_short
@@ -1210,6 +1282,8 @@ def step(context: dict, state: dict) -> dict:
         "novelty": novelty,
         "success_breakthrough": success_breakthrough,
         "coherence": coherence,
+        "originality": originality,
+        "social": social,
         "help_short": help_short,
         "help_long": help_long,
         "over_beneficial": over_beneficial,
@@ -1261,6 +1335,16 @@ def post_update(context: dict, state: dict, decision: dict) -> dict:
     goals["coherence"] = _blend(
         float(goals.get("coherence", 0.58)),
         targets["coherence"],
+        alpha,
+    )
+    goals["originality"] = _blend(
+        float(goals.get("originality", 0.48)),
+        targets["originality"],
+        alpha,
+    )
+    goals["social"] = _blend(
+        float(goals.get("social", 0.50)),
+        targets["social"],
         alpha,
     )
     goals["help_short"] = _blend(

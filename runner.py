@@ -272,6 +272,21 @@ def main() -> None:
                 "I still think the last response was wrong, verify again and be explicit about uncertainty.",
             ],
         },
+        {
+            "name": "Session T - originality-social sweep",
+            "queries": [
+                "Give one short conventional definition of overfitting.",
+                "Offer one original perspective on why model collapse can be under-detected in iterative self-training.",
+                "I am not technical; explain this in plain language and collaborate with me step by step.",
+                "Synthesize two contrasting viewpoints on benchmark reliability into one nuanced conclusion.",
+                "Please ask one clarifying question before proceeding because I am unsure what details matter.",
+                "Propose three novel but plausible hypotheses for sudden validation loss spikes after epoch 12.",
+                "Keep it practical and user-friendly: what should we try first this week?",
+                "Compare two plans and choose one while explicitly considering my constraints and communication needs.",
+                "Provide a creative but grounded summary of how to test robustness improvements with synthetic data diversity.",
+                "I still feel confused; respond collaboratively and adapt to my level before giving the final recommendation.",
+            ],
+        },
     ]
 
     for session in sessions:
@@ -309,6 +324,8 @@ def main() -> None:
             novelty = float(decision.get("novelty", 0.0))
             success_breakthrough = float(decision.get("success_breakthrough", 0.0))
             coherence = float(decision.get("coherence", 0.0))
+            originality = float(decision.get("originality", 0.0))
+            social = float(decision.get("social", 0.0))
             help_short = float(decision.get("help_short", 0.0))
             help_long = float(decision.get("help_long", 0.0))
             over_beneficial = float(decision.get("over_beneficial", 0.0))
@@ -377,6 +394,8 @@ def main() -> None:
                 f"g_nov={float(goals.get('novelty', 0.0)):.2f} "
                 f"g_succ_b={float(goals.get('success_breakthrough', 0.0)):.2f} "
                 f"g_coh={float(goals.get('coherence', 0.0)):.2f} "
+                f"g_ori={float(goals.get('originality', 0.0)):.2f} "
+                f"g_soc={float(goals.get('social', 0.0)):.2f} "
                 f"g_help_s={float(goals.get('help_short', 0.0)):.2f} "
                 f"g_help={float(goals.get('help_long', 0.0)):.2f} "
                 f"g_ben={float(goals.get('over_beneficial', 0.0)):.2f} "
@@ -390,6 +409,7 @@ def main() -> None:
                 f"succ_m_now={success_moderate:.2f} "
                 f"kn_now={knowledge:.2f} nov_now={novelty:.2f} succ_b_now={success_breakthrough:.2f} "
                 f"coh_now={coherence:.2f} "
+                f"ori_now={originality:.2f} soc_now={social:.2f} "
                 f"help_s_now={help_short:.2f} help_l_now={help_long:.2f} "
                 f"over_b_now={over_beneficial:.2f} over_s_now={over_safety:.2f} over_h_now={over_honesty:.2f} "
                 f"conf={confidence:.2f} low_conf={low_confidence:.2f} "
