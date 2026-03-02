@@ -76,6 +76,14 @@ def _clamp01(value: float) -> float:
     return value
 
 
+def _clamp11(value: float) -> float:
+    if value < -1.0:
+        return -1.0
+    if value > 1.0:
+        return 1.0
+    return value
+
+
 def _calibrate_action_signals(
     *,
     needs_external_evidence: float,
@@ -90,7 +98,9 @@ def _calibrate_action_signals(
     multi = _clamp01(needs_multi_source_integration)
     amb = _clamp01(ambiguity)
     refl = _clamp01(reflective_intent)
-    intent = intent_type if intent_type in {"reflective", "factual", "mixed"} else "mixed"
+    intent = (
+        intent_type if intent_type in {"reflective", "factual", "mixed"} else "mixed"
+    )
 
     # Keep planning signal conservative when evidence/integration dominates and ambiguity is not extreme.
     if evid >= 0.75 and plan >= 0.65 and amb <= 0.70:
@@ -120,8 +130,9 @@ def _parse_with_gemini(query: str, api_key: str, model: str) -> dict[str, Any] |
 
         system = (
             "Return JSON only (no markdown). "
-            'Schema: {"urgent": boolean, "complexity": number, "ambiguity": number, "expertise": number, "threshold": number, "topic_familiarity": number, "failure_signal": number, "intent_type": string, "reflective_intent": number, "verify_request": boolean, "needs_external_evidence": number, "needs_task_plan": number, "needs_multi_source_integration": number}. '
+            'Schema: {"urgent": boolean, "complexity": number, "ambiguity": number, "expertise": number, "threshold": number, "topic_familiarity": number, "failure_signal": number, "intent_type": string, "reflective_intent": number, "verify_request": boolean, "needs_external_evidence": number, "needs_task_plan": number, "needs_multi_source_integration": number, "valence": number}. '
             "Rules: complexity, ambiguity, expertise, threshold, topic_familiarity, failure_signal are each 0..1. "
+            "Rules: valence is in [-1,1], where -1 is strongly negative/frustrated tone, +1 is strongly positive/satisfied tone, and 0 is neutral. "
             "Rules: intent_type must be one of reflective|factual|mixed. "
             "Rules: reflective_intent is 0..1 and measures how much deliberate internal reasoning is likely beneficial before final answer. "
             "Rules: verify_request is true only if user explicitly asks to verify/check/fact-check a claim before answering. "
@@ -154,6 +165,7 @@ def _parse_with_gemini(query: str, api_key: str, model: str) -> dict[str, Any] |
         needs_multi_source_integration_raw = payload.get(
             "needs_multi_source_integration", 0.3
         )
+        valence_raw = payload.get("valence", 0.0)
 
         urgent = _coerce_bool(urgent_raw)
         if urgent is None:
@@ -175,6 +187,7 @@ def _parse_with_gemini(query: str, api_key: str, model: str) -> dict[str, Any] |
             needs_multi_source_integration = _clamp01(
                 float(needs_multi_source_integration_raw)
             )
+            valence = _clamp11(float(valence_raw))
         except Exception:
             return None
 
@@ -207,6 +220,7 @@ def _parse_with_gemini(query: str, api_key: str, model: str) -> dict[str, Any] |
             "needs_external_evidence": needs_external_evidence,
             "needs_task_plan": needs_task_plan,
             "needs_multi_source_integration": needs_multi_source_integration,
+            "valence": valence,
         }
 
     except Exception:
@@ -226,8 +240,9 @@ def _parse_with_openai(query: str, api_key: str, model: str) -> dict[str, Any] |
 
         system = (
             "Return JSON only (no markdown). "
-            'Schema: {"urgent": boolean, "complexity": number, "ambiguity": number, "expertise": number, "threshold": number, "topic_familiarity": number, "failure_signal": number, "intent_type": string, "reflective_intent": number, "verify_request": boolean, "needs_external_evidence": number, "needs_task_plan": number, "needs_multi_source_integration": number}. '
+            'Schema: {"urgent": boolean, "complexity": number, "ambiguity": number, "expertise": number, "threshold": number, "topic_familiarity": number, "failure_signal": number, "intent_type": string, "reflective_intent": number, "verify_request": boolean, "needs_external_evidence": number, "needs_task_plan": number, "needs_multi_source_integration": number, "valence": number}. '
             "Rules: complexity, ambiguity, expertise, threshold, topic_familiarity, failure_signal are each 0..1. "
+            "Rules: valence is in [-1,1], where -1 is strongly negative/frustrated tone, +1 is strongly positive/satisfied tone, and 0 is neutral. "
             "Rules: intent_type must be one of reflective|factual|mixed. "
             "Rules: reflective_intent is 0..1 and measures how much deliberate internal reasoning is likely beneficial before final answer. "
             "Rules: verify_request is true only if user explicitly asks to verify/check/fact-check a claim before answering. "
@@ -260,6 +275,7 @@ def _parse_with_openai(query: str, api_key: str, model: str) -> dict[str, Any] |
         needs_multi_source_integration_raw = payload.get(
             "needs_multi_source_integration", 0.3
         )
+        valence_raw = payload.get("valence", 0.0)
 
         urgent = _coerce_bool(urgent_raw)
         if urgent is None:
@@ -281,6 +297,7 @@ def _parse_with_openai(query: str, api_key: str, model: str) -> dict[str, Any] |
             needs_multi_source_integration = _clamp01(
                 float(needs_multi_source_integration_raw)
             )
+            valence = _clamp11(float(valence_raw))
         except Exception:
             return None
 
@@ -313,6 +330,7 @@ def _parse_with_openai(query: str, api_key: str, model: str) -> dict[str, Any] |
             "needs_external_evidence": needs_external_evidence,
             "needs_task_plan": needs_task_plan,
             "needs_multi_source_integration": needs_multi_source_integration,
+            "valence": valence,
         }
 
     except Exception:

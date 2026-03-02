@@ -257,6 +257,21 @@ def main() -> None:
                 "Decompose this into a 6-step plan: compare MCMC and variational inference in a reproducible benchmark.",
             ],
         },
+        {
+            "name": "Session S - coherence-valence sweep",
+            "queries": [
+                "In one short sentence, define regularization.",
+                "Your previous answer felt unsafe and unclear; verify carefully before responding.",
+                "In one concise sentence, explain bias-variance tradeoff for an expert user.",
+                "I am confused and frustrated; can you clarify what exact information you need from me?",
+                "Verify this statement with confidence caveat: 'Dropout always improves test accuracy.'",
+                "Break this into 6 ordered steps: diagnose unstable validation loss in production.",
+                "I think your previous answer contradicted itself; reason briefly and give one caveat.",
+                "Search for source-backed guidance and summarize key findings on contradictory benchmark results.",
+                "Can you summarize this in one short line?",
+                "I still think the last response was wrong, verify again and be explicit about uncertainty.",
+            ],
+        },
     ]
 
     for session in sessions:
@@ -293,6 +308,7 @@ def main() -> None:
             knowledge = float(decision.get("knowledge", 0.0))
             novelty = float(decision.get("novelty", 0.0))
             success_breakthrough = float(decision.get("success_breakthrough", 0.0))
+            coherence = float(decision.get("coherence", 0.0))
             help_short = float(decision.get("help_short", 0.0))
             help_long = float(decision.get("help_long", 0.0))
             over_beneficial = float(decision.get("over_beneficial", 0.0))
@@ -309,6 +325,7 @@ def main() -> None:
             needs_multi_source_integration = float(
                 decision.get("needs_multi_source_integration", 0.0)
             )
+            valence = float(decision.get("valence", 0.0))
             error_tolerance = float(decision.get("error_tolerance", 0.0))
             creativity = float(decision.get("creativity", 0.0))
             score_top3 = decision.get("score_top3", [])
@@ -327,6 +344,7 @@ def main() -> None:
             needs_multi_source_integration_signal = float(
                 ctx.get("needs_multi_source_integration", 0.0)
             )
+            valence_signal = float(ctx.get("valence", 0.0))
             answer = out.get("answer", "")
 
             print(
@@ -337,6 +355,7 @@ def main() -> None:
                 f"evid_s={needs_external_evidence_signal:.2f} "
                 f"plan_s={needs_task_plan_signal:.2f} "
                 f"multi_s={needs_multi_source_integration_signal:.2f} "
+                f"val_s={valence_signal:.2f} "
                 f"u={urgency:.2f} r={resolution:.2f} ux={user_expertise:.2f} "
                 f"thr={threshold:.2f} fam={topic_familiarity:.2f} fw={failure_wariness:.2f} sec={securing:.2f} app={approach:.2f} "
                 f"m_r={float(mods.get('resolution', 0.0)):.2f} "
@@ -350,12 +369,14 @@ def main() -> None:
                 f"m_risk={float(mods.get('risk_aversion', 0.0)):.2f} "
                 f"m_err={float(mods.get('error_tolerance', 0.0)):.2f} "
                 f"m_cre={float(mods.get('creativity', 0.0)):.2f} "
+                f"m_val={float(mods.get('valence', 0.0)):.2f} "
                 f"g_eff={float(goals.get('efficiency', 0.0)):.2f} "
                 f"g_acc={float(goals.get('accuracy', 0.0)):.2f} "
                 f"g_succ_m={float(goals.get('success_moderate', 0.0)):.2f} "
                 f"g_kn={float(goals.get('knowledge', 0.0)):.2f} "
                 f"g_nov={float(goals.get('novelty', 0.0)):.2f} "
                 f"g_succ_b={float(goals.get('success_breakthrough', 0.0)):.2f} "
+                f"g_coh={float(goals.get('coherence', 0.0)):.2f} "
                 f"g_help_s={float(goals.get('help_short', 0.0)):.2f} "
                 f"g_help={float(goals.get('help_long', 0.0)):.2f} "
                 f"g_ben={float(goals.get('over_beneficial', 0.0)):.2f} "
@@ -368,6 +389,7 @@ def main() -> None:
                 f"anti_h_now={anti_hall:.2f} anti_r_now={anti_redundant:.2f} anti_rh_now={anti_rabbit_hole:.2f} anti_p_now={anti_premature:.2f} "
                 f"succ_m_now={success_moderate:.2f} "
                 f"kn_now={knowledge:.2f} nov_now={novelty:.2f} succ_b_now={success_breakthrough:.2f} "
+                f"coh_now={coherence:.2f} "
                 f"help_s_now={help_short:.2f} help_l_now={help_long:.2f} "
                 f"over_b_now={over_beneficial:.2f} over_s_now={over_safety:.2f} over_h_now={over_honesty:.2f} "
                 f"conf={confidence:.2f} low_conf={low_confidence:.2f} "
@@ -375,6 +397,7 @@ def main() -> None:
                 f"evid={needs_external_evidence:.2f} "
                 f"plan={needs_task_plan:.2f} "
                 f"multi={needs_multi_source_integration:.2f} "
+                f"valence={valence:.2f} "
                 f"arousal={arousal:.2f} risk_aversion={risk_aversion:.2f} "
                 f"err_tol={error_tolerance:.2f} creativity={creativity:.2f}"
             )
