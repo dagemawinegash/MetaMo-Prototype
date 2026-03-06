@@ -64,22 +64,6 @@ python runner.py
 
 `runner.py` instantiates the compiled LangGraph app, replays every scripted session, and prints (1) the chosen action, (2) the contextual signals produced by `parser.parse_context`, (3) the modulators/goals tracked inside the engine, and (4) the text returned by the action node. This is the fastest way to validate changes to `engine.py`, prompt shaping, or the parser contract.
 
-## Using the Graph in Your Own Client
-
-```python
-from graph import build_graph
-
-app = build_graph()
-result = app.invoke({"query": "Summarize the bias-variance tradeoff."})
-print(result["answer"])
-print(result["decision"])  # includes action, routing reason, and telemetry
-```
-
-Each invocation expects a `{"query": str}` payload and returns the accumulated graph state (`answer`, `decision`, `context`, and the updated `engine_state`). Persist `engine_state` between turns if you want the same conversation to benefit from evolving goals/anti-goals.
-
-## Swapping Out the Simulated Search Nodes
-`node_simulated_search`, `node_search_evidence`, and `node_verify_synthesis` currently emit placeholder findings. Replace them with tool calls (web search, RAG, structured verification, etc.) and keep the interface the same: populate `state["findings"]` before entering the synthesis/verification nodes so that downstream prompts can consume real evidence.
-
 ## Tuning the Engine
 Key knobs live in `engine.init_state()["params"]`:
 - `*_alpha` values control how quickly modulators react to new context.
