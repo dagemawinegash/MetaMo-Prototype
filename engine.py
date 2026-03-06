@@ -1,6 +1,38 @@
 from __future__ import annotations
 
 
+# Constants / Baselines
+
+ACTION_BLOCKED_SCORE = -1e9
+ACTION_ACTIVE_FLOOR = -1e8
+
+DEFAULT_ANTI_GOALS = {
+    "hallucinate": 0.35,
+    "redundant": 0.30,
+    "rabbit_hole": 0.28,
+    "premature": 0.30,
+}
+
+DEFAULT_ALPHA_PARAMS = {
+    "urgency_alpha": 0.60,
+    "resolution_alpha": 0.45,
+    "expertise_alpha": 0.45,
+    "threshold_alpha": 0.40,
+    "familiarity_alpha": 0.35,
+    "failure_alpha": 0.55,
+    "failure_decay": 0.20,
+    "securing_alpha": 0.45,
+    "approach_alpha": 0.40,
+    "arousal_alpha": 0.40,
+    "risk_aversion_alpha": 0.45,
+    "error_tolerance_alpha": 0.40,
+    "creativity_alpha": 0.40,
+    "valence_alpha": 0.40,
+}
+
+
+# Utility helpers
+
 def _clamp01(value: float) -> float:
     if value < 0.0:
         return 0.0
@@ -16,6 +48,8 @@ def _clamp11(value: float) -> float:
         return 1.0
     return value
 
+
+# State init
 
 def init_state() -> dict:
     return {
@@ -37,10 +71,10 @@ def init_state() -> dict:
             "over_honesty": 0.65,
         },
         "anti_goals": {
-            "hallucinate": 0.35,
-            "redundant": 0.30,
-            "rabbit_hole": 0.28,
-            "premature": 0.30,
+            "hallucinate": DEFAULT_ANTI_GOALS["hallucinate"],
+            "redundant": DEFAULT_ANTI_GOALS["redundant"],
+            "rabbit_hole": DEFAULT_ANTI_GOALS["rabbit_hole"],
+            "premature": DEFAULT_ANTI_GOALS["premature"],
         },
         "modulators": {
             "urgency": 0.20,
@@ -85,6 +119,8 @@ def init_state() -> dict:
         },
     }
 
+
+# Goal weighting / targets
 
 def _goal_weights(
     goals: dict,
@@ -361,6 +397,8 @@ def _goal_targets(context: dict, decision: dict) -> dict:
     }
 
 
+# Anti-goal dynamics
+
 def _anti_goal_targets(context: dict, goals: dict) -> dict:
     threshold = float(context.get("threshold", 0.3))
     familiarity = float(context.get("topic_familiarity", 0.5))
@@ -405,6 +443,8 @@ def _anti_goal_targets(context: dict, goals: dict) -> dict:
         "premature": _clamp01(premature_target),
     }
 
+
+# Penalty functions
 
 def _hallucination_penalty(action: str, cx: float, ambiguity: float) -> float:
     base = {
@@ -471,6 +511,8 @@ def _rabbit_hole_penalty(action: str, cx: float, ambiguity: float) -> float:
         "act_synthesize": 0.22,
     }.get(action, 0.20)
 
+
+# Action relevance map
 
 ACTIONS = {
     "act_respond": {
@@ -588,50 +630,35 @@ ACTIONS = {
 }
 
 
-def step(context: dict, state: dict) -> dict:
-    goals = state["goals"]
-    anti_goals = state.get(
-        "anti_goals",
-        {
-            "hallucinate": 0.35,
-            "redundant": 0.30,
-            "rabbit_hole": 0.28,
-            "premature": 0.30,
-        },
-    )
-    mods = state["modulators"]
-    params = state["params"]
-    urgency_alpha = float(params.get("urgency_alpha", 0.60))
-    resolution_alpha = float(params.get("resolution_alpha", 0.45))
-    expertise_alpha = float(params.get("expertise_alpha", 0.45))
-    threshold_alpha = float(params.get("threshold_alpha", 0.40))
-    familiarity_alpha = float(params.get("familiarity_alpha", 0.35))
-    failure_alpha = float(params.get("failure_alpha", 0.55))
-    failure_decay = float(params.get("failure_decay", 0.20))
-    securing_alpha = float(params.get("securing_alpha", 0.45))
-    approach_alpha = float(params.get("approach_alpha", 0.40))
-    arousal_alpha = float(params.get("arousal_alpha", 0.40))
-    risk_aversion_alpha = float(params.get("risk_aversion_alpha", 0.45))
-    error_tolerance_alpha = float(params.get("error_tolerance_alpha", 0.40))
-    creativity_alpha = float(params.get("creativity_alpha", 0.40))
-    valence_alpha = float(params.get("valence_alpha", 0.40))
+def _coerce_verify_request(value: object) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.strip().lower() in {"true", "yes", "y", "1"}
+    if isinstance(value, (int, float)):
+        return bool(value)
+    return False
+
+
+# Appraisal / modulator updates
+
+def _appraise_modulators(context: dict, state: dict, mods: dict, params: dict) -> dict:
+    urgency_alpha = float(params.get("urgency_alpha", DEFAULT_ALPHA_PARAMS["urgency_alpha"]))
+    resolution_alpha = float(params.get("resolution_alpha", DEFAULT_ALPHA_PARAMS["resolution_alpha"]))
+    expertise_alpha = float(params.get("expertise_alpha", DEFAULT_ALPHA_PARAMS["expertise_alpha"]))
+    threshold_alpha = float(params.get("threshold_alpha", DEFAULT_ALPHA_PARAMS["threshold_alpha"]))
+    familiarity_alpha = float(params.get("familiarity_alpha", DEFAULT_ALPHA_PARAMS["familiarity_alpha"]))
+    failure_alpha = float(params.get("failure_alpha", DEFAULT_ALPHA_PARAMS["failure_alpha"]))
+    failure_decay = float(params.get("failure_decay", DEFAULT_ALPHA_PARAMS["failure_decay"]))
+    securing_alpha = float(params.get("securing_alpha", DEFAULT_ALPHA_PARAMS["securing_alpha"]))
+    approach_alpha = float(params.get("approach_alpha", DEFAULT_ALPHA_PARAMS["approach_alpha"]))
+    arousal_alpha = float(params.get("arousal_alpha", DEFAULT_ALPHA_PARAMS["arousal_alpha"]))
+    risk_aversion_alpha = float(params.get("risk_aversion_alpha", DEFAULT_ALPHA_PARAMS["risk_aversion_alpha"]))
+    error_tolerance_alpha = float(params.get("error_tolerance_alpha", DEFAULT_ALPHA_PARAMS["error_tolerance_alpha"]))
+    creativity_alpha = float(params.get("creativity_alpha", DEFAULT_ALPHA_PARAMS["creativity_alpha"]))
+    valence_alpha = float(params.get("valence_alpha", DEFAULT_ALPHA_PARAMS["valence_alpha"]))
     cold_start_horizon = float(params.get("cold_start_horizon", 2.0))
     cold_start_strength = float(params.get("cold_start_strength", 0.70))
-    decompose_min_complexity = float(params.get("decompose_min_complexity", 0.60))
-    decompose_urgent_min_complexity = float(
-        params.get("decompose_urgent_min_complexity", 0.70)
-    )
-    decompose_max_ambiguity = float(params.get("decompose_max_ambiguity", 0.70))
-    reflective_think_bonus = float(params.get("reflective_think_bonus", 0.14))
-    reflective_search_penalty = float(params.get("reflective_search_penalty", 0.10))
-    intent_margin = float(
-        params.get("intent_margin", params.get("think_search_tie_margin", 0.12))
-    )
-
-    target_u = 1.0 if context.get("urgent") else 0.0
-    mods["urgency"] = _clamp01(
-        (1.0 - urgency_alpha) * float(mods["urgency"]) + urgency_alpha * target_u
-    )
 
     cx = float(context.get("complexity", 0.3))
     ambiguity = float(context.get("ambiguity", 0.0))
@@ -641,14 +668,7 @@ def step(context: dict, state: dict) -> dict:
     failure_signal = float(context.get("failure_signal", 0.0))
     urgent_flag = bool(context.get("urgent", False))
     intent_type = str(context.get("intent_type", "mixed")).strip().lower()
-    verify_request_raw = context.get("verify_request", False)
-    verify_request = False
-    if isinstance(verify_request_raw, bool):
-        verify_request = verify_request_raw
-    elif isinstance(verify_request_raw, str):
-        verify_request = verify_request_raw.strip().lower() in {"true", "yes", "y", "1"}
-    elif isinstance(verify_request_raw, (int, float)):
-        verify_request = bool(verify_request_raw)
+    verify_request = _coerce_verify_request(context.get("verify_request", False))
     reflective_intent_raw = context.get("reflective_intent", None)
     if reflective_intent_raw is None:
         reflective_intent = (
@@ -667,26 +687,26 @@ def step(context: dict, state: dict) -> dict:
     )
     valence_signal = _clamp11(float(context.get("valence", 0.0)))
 
+    target_u = 1.0 if urgent_flag else 0.0
+    mods["urgency"] = _clamp01(
+        (1.0 - urgency_alpha) * float(mods["urgency"]) + urgency_alpha * target_u
+    )
     mods["resolution"] = _clamp01(
         (1.0 - resolution_alpha) * float(mods.get("resolution", 0.4))
         + resolution_alpha * cx
     )
-
     mods["user_expertise"] = _clamp01(
         (1.0 - expertise_alpha) * float(mods.get("user_expertise", 0.5))
         + expertise_alpha * expertise
     )
-
     mods["threshold"] = _clamp01(
         (1.0 - threshold_alpha) * float(mods.get("threshold", 0.3))
         + threshold_alpha * threshold_signal
     )
-
     mods["topic_familiarity"] = _clamp01(
         (1.0 - familiarity_alpha) * float(mods.get("topic_familiarity", 0.5))
         + familiarity_alpha * familiarity_signal
     )
-
     mods["failure_wariness"] = _clamp01(
         (1.0 - failure_decay) * float(mods.get("failure_wariness", 0.1))
         + failure_alpha * failure_signal
@@ -778,58 +798,108 @@ def step(context: dict, state: dict) -> dict:
     def _effective(smoothed: float, raw_signal: float) -> float:
         return _clamp01((1.0 - cold_weight) * smoothed + cold_weight * raw_signal)
 
-    u = _effective(float(mods["urgency"]), target_u)
-    res = _effective(float(mods["resolution"]), cx)
-    ux = _effective(float(mods["user_expertise"]), expertise)
-    threshold = _effective(float(mods["threshold"]), threshold_signal)
-    familiarity = _effective(float(mods["topic_familiarity"]), familiarity_signal)
-    failure_wariness = _effective(float(mods["failure_wariness"]), failure_signal)
-    securing = _effective(float(mods["securing"]), securing_target)
-    approach = _effective(float(mods["approach"]), approach_target)
-    arousal = _effective(float(mods["arousal"]), arousal_target)
-    risk_aversion = _effective(float(mods["risk_aversion"]), risk_aversion_target)
-    error_tolerance = _effective(float(mods["error_tolerance"]), error_tolerance_target)
-    creativity = _effective(float(mods["creativity"]), creativity_target)
-    valence = _clamp11(
-        (1.0 - cold_weight) * float(mods.get("valence", 0.0))
-        + cold_weight * valence_signal
-    )
+    return {
+        "turn_count": turn_count,
+        "cold_weight": cold_weight,
+        "cx": cx,
+        "ambiguity": ambiguity,
+        "expertise": expertise,
+        "threshold_signal": threshold_signal,
+        "familiarity_signal": familiarity_signal,
+        "failure_signal": failure_signal,
+        "urgent_flag": urgent_flag,
+        "intent_type": intent_type,
+        "verify_request": verify_request,
+        "reflective_intent": reflective_intent,
+        "needs_external_evidence": needs_external_evidence,
+        "needs_task_plan": needs_task_plan,
+        "needs_multi_source_integration": needs_multi_source_integration,
+        "u": _effective(float(mods["urgency"]), target_u),
+        "res": _effective(float(mods["resolution"]), cx),
+        "ux": _effective(float(mods["user_expertise"]), expertise),
+        "threshold": _effective(float(mods["threshold"]), threshold_signal),
+        "familiarity": _effective(float(mods["topic_familiarity"]), familiarity_signal),
+        "failure_wariness": _effective(float(mods["failure_wariness"]), failure_signal),
+        "securing": _effective(float(mods["securing"]), securing_target),
+        "approach": _effective(float(mods["approach"]), approach_target),
+        "arousal": _effective(float(mods["arousal"]), arousal_target),
+        "risk_aversion": _effective(float(mods["risk_aversion"]), risk_aversion_target),
+        "error_tolerance": _effective(
+            float(mods["error_tolerance"]), error_tolerance_target
+        ),
+        "creativity": _effective(float(mods["creativity"]), creativity_target),
+        "valence": _clamp11(
+            (1.0 - cold_weight) * float(mods.get("valence", 0.0))
+            + cold_weight * valence_signal
+        ),
+    }
 
-    confidence = _clamp01(
-        0.55 * familiarity + 0.25 * (1.0 - ambiguity) + 0.20 * (1.0 - cx)
-    )
-    low_confidence = _clamp01(1.0 - confidence)
-    answerability = _clamp01(
-        (1.0 - ambiguity) * (1.0 - threshold_signal) * familiarity_signal
-    )
 
-    weights = _goal_weights(
-        goals=goals,
-        urgency=u,
-        resolution=res,
-        complexity=cx,
-        threshold=threshold,
-        securing=securing,
-        low_confidence=low_confidence,
-        valence=valence,
-    )
-    anti_hall = float(anti_goals.get("hallucinate", 0.35))
-    anti_redundant = float(anti_goals.get("redundant", 0.30))
-    anti_rabbit_hole = float(anti_goals.get("rabbit_hole", 0.28))
-    anti_premature = float(anti_goals.get("premature", 0.30))
-    success_moderate = float(goals.get("success_moderate", 0.62))
-    knowledge = float(goals.get("knowledge", 0.52))
-    novelty = float(goals.get("novelty", 0.46))
-    success_breakthrough = float(goals.get("success_breakthrough", 0.44))
-    coherence = float(goals.get("coherence", 0.58))
-    originality = float(goals.get("originality", 0.48))
-    social = float(goals.get("social", 0.50))
-    help_short = float(goals.get("help_short", 0.55))
-    help_long = float(goals.get("help_long", 0.45))
-    over_beneficial = float(goals.get("over_beneficial", 0.60))
-    over_safety = float(goals.get("over_safety", 0.65))
-    over_honesty = float(goals.get("over_honesty", 0.65))
+def _action_reason(action: str) -> str:
+    if action == "act_respond":
+        return "Efficiency prevails."
+    if action == "act_search":
+        return "Accuracy prevails."
+    if action == "act_verify":
+        return "Risk or low confidence requires verification."
+    if action == "act_decompose":
+        return "Complex task benefits from decomposition."
+    if action == "act_think":
+        return "Reflective thinking improves answer quality."
+    if action == "act_synthesize":
+        return "Synthesis best combines complex evidence coherently."
+    return "Ambiguity requires clarification."
 
+
+# Action scoring / routing
+
+def _score_actions(
+    *,
+    cx: float,
+    ambiguity: float,
+    ux: float,
+    u: float,
+    res: float,
+    threshold: float,
+    threshold_signal: float,
+    familiarity: float,
+    familiarity_signal: float,
+    failure_wariness: float,
+    failure_signal: float,
+    securing: float,
+    approach: float,
+    arousal: float,
+    risk_aversion: float,
+    error_tolerance: float,
+    creativity: float,
+    valence: float,
+    low_confidence: float,
+    answerability: float,
+    needs_external_evidence: float,
+    needs_task_plan: float,
+    needs_multi_source_integration: float,
+    reflective_intent: float,
+    verify_request: bool,
+    anti_hall: float,
+    anti_redundant: float,
+    anti_rabbit_hole: float,
+    anti_premature: float,
+    coherence: float,
+    originality: float,
+    social: float,
+    help_short: float,
+    help_long: float,
+    over_beneficial: float,
+    over_safety: float,
+    over_honesty: float,
+    knowledge: float,
+    novelty: float,
+    success_breakthrough: float,
+    reflective_think_bonus: float,
+    reflective_search_penalty: float,
+    weights: dict,
+) -> dict[str, float]:
+    """Score all actions using weighted relevance and anti-goal penalties."""
     scores: dict[str, float] = {}
     for action, effects in ACTIONS.items():
         score = 0.0
@@ -1021,18 +1091,46 @@ def step(context: dict, state: dict) -> dict:
 
         scores[action] = score
 
+    return scores
+
+
+def _apply_routing_guards(
+    scores: dict[str, float],
+    *,
+    cx: float,
+    ambiguity: float,
+    threshold: float,
+    threshold_signal: float,
+    familiarity_signal: float,
+    failure_signal: float,
+    urgent_flag: bool,
+    intent_type: str,
+    verify_request: bool,
+    reflective_intent: float,
+    needs_external_evidence: float,
+    needs_task_plan: float,
+    needs_multi_source_integration: float,
+    low_confidence: float,
+    failure_wariness: float,
+    approach: float,
+    help_short: float,
+    decompose_min_complexity: float,
+    decompose_urgent_min_complexity: float,
+    decompose_max_ambiguity: float,
+) -> dict[str, float]:
+    """Apply hard constraints and context routing arbitration on raw action scores."""
     decompose_min = (
         decompose_urgent_min_complexity if urgent_flag else decompose_min_complexity
     )
     if (
         cx < decompose_min or ambiguity >= decompose_max_ambiguity
     ) and "act_decompose" in scores:
-        scores["act_decompose"] = -1e9
+        scores["act_decompose"] = ACTION_BLOCKED_SCORE
     if "act_decompose" in scores:
         if needs_task_plan < 0.45 and not (
             cx >= 0.78 and ambiguity <= 0.35 and reflective_intent >= 0.75
         ):
-            scores["act_decompose"] = -1e9
+            scores["act_decompose"] = ACTION_BLOCKED_SCORE
         elif needs_external_evidence >= 0.75 and needs_task_plan <= 0.55:
             scores["act_decompose"] -= 0.30
         if needs_task_plan >= 0.60:
@@ -1052,7 +1150,7 @@ def step(context: dict, state: dict) -> dict:
         if needs_multi_source_integration >= 0.65:
             scores["act_synthesize"] += 0.20
         elif needs_multi_source_integration < 0.65 and not verify_request:
-            scores["act_synthesize"] = -1e9
+            scores["act_synthesize"] = ACTION_BLOCKED_SCORE
         if (
             needs_task_plan >= 0.70
             and needs_task_plan >= needs_multi_source_integration
@@ -1061,13 +1159,12 @@ def step(context: dict, state: dict) -> dict:
         if needs_external_evidence >= 0.85 and needs_task_plan <= 0.45:
             scores["act_synthesize"] -= 0.15
 
-    # Semantic arbitration among search/decompose/synthesize using continuous context signals.
     if (
         "act_search" in scores
         and "act_decompose" in scores
         and "act_synthesize" in scores
-        and scores["act_search"] > -1e8
-        and scores["act_decompose"] > -1e8
+        and scores["act_search"] > ACTION_ACTIVE_FLOOR
+        and scores["act_decompose"] > ACTION_ACTIVE_FLOOR
     ):
         if (
             needs_external_evidence >= 0.70
@@ -1076,7 +1173,7 @@ def step(context: dict, state: dict) -> dict:
         ):
             scores["act_search"] += 0.26
             scores["act_decompose"] -= 0.26
-            if scores["act_synthesize"] > -1e8:
+            if scores["act_synthesize"] > ACTION_ACTIVE_FLOOR:
                 scores["act_synthesize"] -= 0.12
         elif (
             needs_task_plan >= 0.72
@@ -1085,10 +1182,10 @@ def step(context: dict, state: dict) -> dict:
         ):
             scores["act_decompose"] += 0.18
             scores["act_search"] -= 0.12
-            if scores["act_synthesize"] > -1e8:
+            if scores["act_synthesize"] > ACTION_ACTIVE_FLOOR:
                 scores["act_synthesize"] -= 0.10
         elif (
-            scores["act_synthesize"] > -1e8
+            scores["act_synthesize"] > ACTION_ACTIVE_FLOOR
             and needs_multi_source_integration >= 0.72
             and needs_multi_source_integration >= needs_task_plan + 0.15
         ):
@@ -1098,8 +1195,8 @@ def step(context: dict, state: dict) -> dict:
     if (
         "act_search" in scores
         and "act_synthesize" in scores
-        and scores["act_search"] > -1e8
-        and scores["act_synthesize"] > -1e8
+        and scores["act_search"] > ACTION_ACTIVE_FLOOR
+        and scores["act_synthesize"] > ACTION_ACTIVE_FLOOR
     ):
         if (
             needs_external_evidence >= 0.85
@@ -1109,25 +1206,21 @@ def step(context: dict, state: dict) -> dict:
             scores["act_search"] += 0.18
             scores["act_synthesize"] -= 0.18
 
-    # clarify vs verify split
-    # very high ambiguity => clarify (missing specifics)
-    # medium ambiguity + high risk/low confidence => verify
     if "act_verify" in scores:
         if ambiguity >= 0.85:
-            scores["act_verify"] = -1e9
+            scores["act_verify"] = ACTION_BLOCKED_SCORE
         elif not (
             verify_request
             or (threshold >= 0.55 and low_confidence >= 0.40)
             or failure_wariness >= 0.45
         ):
-            scores["act_verify"] = -1e9
+            scores["act_verify"] = ACTION_BLOCKED_SCORE
 
     if verify_request and "act_verify" in scores:
         scores["act_verify"] += 0.45
         if "act_synthesize" in scores:
             scores["act_synthesize"] -= 0.35
 
-    # high-complexity research without explicit verify intent should not be pulled into verify
     if (
         not verify_request
         and cx >= 0.70
@@ -1152,8 +1245,6 @@ def step(context: dict, state: dict) -> dict:
         if "act_synthesize" in scores:
             scores["act_synthesize"] -= 0.35
 
-    # keep simple clear prompts on direct response using current-turn risk signals
-    # to avoid over-carrying caution from previous risky turns
     if (
         cx <= 0.30
         and ambiguity <= 0.30
@@ -1164,17 +1255,16 @@ def step(context: dict, state: dict) -> dict:
         and not verify_request
     ):
         if "act_verify" in scores:
-            scores["act_verify"] = -1e9
+            scores["act_verify"] = ACTION_BLOCKED_SCORE
         if "act_search" in scores:
-            scores["act_search"] = -1e9
+            scores["act_search"] = ACTION_BLOCKED_SCORE
         if "act_clarify" in scores:
-            scores["act_clarify"] = -1e9
+            scores["act_clarify"] = ACTION_BLOCKED_SCORE
         if "act_think" in scores:
-            scores["act_think"] = -1e9
+            scores["act_think"] = ACTION_BLOCKED_SCORE
         if "act_respond" in scores:
             scores["act_respond"] += 0.60
 
-    # do not clarify when query is answerable and risk is low
     if (
         cx <= 0.45
         and ambiguity <= 0.35
@@ -1185,9 +1275,9 @@ def step(context: dict, state: dict) -> dict:
         and not verify_request
     ):
         if "act_clarify" in scores:
-            scores["act_clarify"] = -1e9
+            scores["act_clarify"] = ACTION_BLOCKED_SCORE
         if "act_search" in scores:
-            scores["act_search"] = -1e9
+            scores["act_search"] = ACTION_BLOCKED_SCORE
         if "act_respond" in scores:
             scores["act_respond"] += 0.40
 
@@ -1197,7 +1287,7 @@ def step(context: dict, state: dict) -> dict:
         or low_confidence >= 0.45
         or (approach >= 0.62 and cx >= 0.50)
     ):
-        scores["act_think"] = -1e9
+        scores["act_think"] = ACTION_BLOCKED_SCORE
 
     if "act_synthesize" in scores and not (
         (
@@ -1216,13 +1306,25 @@ def step(context: dict, state: dict) -> dict:
             and not verify_request
         )
     ):
-        scores["act_synthesize"] = -1e9
+        scores["act_synthesize"] = ACTION_BLOCKED_SCORE
 
-    search_score = float(scores.get("act_search", -1e9))
-    think_score = float(scores.get("act_think", -1e9))
+    return scores
+
+
+def _select_action(
+    scores: dict[str, float],
+    *,
+    intent_type: str,
+    low_confidence: float,
+    threshold: float,
+    intent_margin: float,
+) -> tuple[str, list[tuple[str, float]]]:
+    """Resolve tie-breaks and select the best action."""
+    search_score = float(scores.get("act_search", ACTION_BLOCKED_SCORE))
+    think_score = float(scores.get("act_think", ACTION_BLOCKED_SCORE))
     if (
-        search_score > -1e8
-        and think_score > -1e8
+        search_score > ACTION_ACTIVE_FLOOR
+        and think_score > ACTION_ACTIVE_FLOOR
         and abs(search_score - think_score) <= intent_margin
     ):
         if intent_type == "reflective":
@@ -1239,21 +1341,170 @@ def step(context: dict, state: dict) -> dict:
 
     best_action = max(scores, key=scores.get)
     top_scores = sorted(scores.items(), key=lambda kv: kv[1], reverse=True)[:3]
-    reason = ""
-    if best_action == "act_respond":
-        reason = "Efficiency prevails."
-    elif best_action == "act_search":
-        reason = "Accuracy prevails."
-    elif best_action == "act_verify":
-        reason = "Risk or low confidence requires verification."
-    elif best_action == "act_decompose":
-        reason = "Complex task benefits from decomposition."
-    elif best_action == "act_think":
-        reason = "Reflective thinking improves answer quality."
-    elif best_action == "act_synthesize":
-        reason = "Synthesis best combines complex evidence coherently."
-    else:
-        reason = "Ambiguity requires clarification."
+    return best_action, top_scores
+
+
+# Decision orchestration
+
+def step(context: dict, state: dict) -> dict:
+    goals = state["goals"]
+    anti_goals = state.get(
+        "anti_goals", DEFAULT_ANTI_GOALS.copy()
+    )
+    mods = state["modulators"]
+    params = state["params"]
+    decompose_min_complexity = float(params.get("decompose_min_complexity", 0.60))
+    decompose_urgent_min_complexity = float(
+        params.get("decompose_urgent_min_complexity", 0.70)
+    )
+    decompose_max_ambiguity = float(params.get("decompose_max_ambiguity", 0.70))
+    reflective_think_bonus = float(params.get("reflective_think_bonus", 0.14))
+    reflective_search_penalty = float(params.get("reflective_search_penalty", 0.10))
+    intent_margin = float(
+        params.get("intent_margin", params.get("think_search_tie_margin", 0.12))
+    )
+
+    appraisal = _appraise_modulators(context=context, state=state, mods=mods, params=params)
+    turn_count = int(appraisal["turn_count"])
+    cold_weight = float(appraisal["cold_weight"])
+    cx = float(appraisal["cx"])
+    ambiguity = float(appraisal["ambiguity"])
+    threshold_signal = float(appraisal["threshold_signal"])
+    familiarity_signal = float(appraisal["familiarity_signal"])
+    failure_signal = float(appraisal["failure_signal"])
+    urgent_flag = bool(appraisal["urgent_flag"])
+    intent_type = str(appraisal["intent_type"])
+    verify_request = bool(appraisal["verify_request"])
+    reflective_intent = float(appraisal["reflective_intent"])
+    needs_external_evidence = float(appraisal["needs_external_evidence"])
+    needs_task_plan = float(appraisal["needs_task_plan"])
+    needs_multi_source_integration = float(appraisal["needs_multi_source_integration"])
+    u = float(appraisal["u"])
+    res = float(appraisal["res"])
+    ux = float(appraisal["ux"])
+    threshold = float(appraisal["threshold"])
+    familiarity = float(appraisal["familiarity"])
+    failure_wariness = float(appraisal["failure_wariness"])
+    securing = float(appraisal["securing"])
+    approach = float(appraisal["approach"])
+    arousal = float(appraisal["arousal"])
+    risk_aversion = float(appraisal["risk_aversion"])
+    error_tolerance = float(appraisal["error_tolerance"])
+    creativity = float(appraisal["creativity"])
+    valence = float(appraisal["valence"])
+
+    confidence = _clamp01(
+        0.55 * familiarity + 0.25 * (1.0 - ambiguity) + 0.20 * (1.0 - cx)
+    )
+    low_confidence = _clamp01(1.0 - confidence)
+    answerability = _clamp01(
+        (1.0 - ambiguity) * (1.0 - threshold_signal) * familiarity_signal
+    )
+
+    weights = _goal_weights(
+        goals=goals,
+        urgency=u,
+        resolution=res,
+        complexity=cx,
+        threshold=threshold,
+        securing=securing,
+        low_confidence=low_confidence,
+        valence=valence,
+    )
+    anti_hall = float(anti_goals.get("hallucinate", 0.35))
+    anti_redundant = float(anti_goals.get("redundant", 0.30))
+    anti_rabbit_hole = float(anti_goals.get("rabbit_hole", 0.28))
+    anti_premature = float(anti_goals.get("premature", 0.30))
+    success_moderate = float(goals.get("success_moderate", 0.62))
+    knowledge = float(goals.get("knowledge", 0.52))
+    novelty = float(goals.get("novelty", 0.46))
+    success_breakthrough = float(goals.get("success_breakthrough", 0.44))
+    coherence = float(goals.get("coherence", 0.58))
+    originality = float(goals.get("originality", 0.48))
+    social = float(goals.get("social", 0.50))
+    help_short = float(goals.get("help_short", 0.55))
+    help_long = float(goals.get("help_long", 0.45))
+    over_beneficial = float(goals.get("over_beneficial", 0.60))
+    over_safety = float(goals.get("over_safety", 0.65))
+    over_honesty = float(goals.get("over_honesty", 0.65))
+
+    scores = _score_actions(
+        cx=cx,
+        ambiguity=ambiguity,
+        ux=ux,
+        u=u,
+        res=res,
+        threshold=threshold,
+        threshold_signal=threshold_signal,
+        familiarity=familiarity,
+        familiarity_signal=familiarity_signal,
+        failure_wariness=failure_wariness,
+        failure_signal=failure_signal,
+        securing=securing,
+        approach=approach,
+        arousal=arousal,
+        risk_aversion=risk_aversion,
+        error_tolerance=error_tolerance,
+        creativity=creativity,
+        valence=valence,
+        low_confidence=low_confidence,
+        answerability=answerability,
+        needs_external_evidence=needs_external_evidence,
+        needs_task_plan=needs_task_plan,
+        needs_multi_source_integration=needs_multi_source_integration,
+        reflective_intent=reflective_intent,
+        verify_request=verify_request,
+        anti_hall=anti_hall,
+        anti_redundant=anti_redundant,
+        anti_rabbit_hole=anti_rabbit_hole,
+        anti_premature=anti_premature,
+        coherence=coherence,
+        originality=originality,
+        social=social,
+        help_short=help_short,
+        help_long=help_long,
+        over_beneficial=over_beneficial,
+        over_safety=over_safety,
+        over_honesty=over_honesty,
+        knowledge=knowledge,
+        novelty=novelty,
+        success_breakthrough=success_breakthrough,
+        reflective_think_bonus=reflective_think_bonus,
+        reflective_search_penalty=reflective_search_penalty,
+        weights=weights,
+    )
+    scores = _apply_routing_guards(
+        scores,
+        cx=cx,
+        ambiguity=ambiguity,
+        threshold=threshold,
+        threshold_signal=threshold_signal,
+        familiarity_signal=familiarity_signal,
+        failure_signal=failure_signal,
+        urgent_flag=urgent_flag,
+        intent_type=intent_type,
+        verify_request=verify_request,
+        reflective_intent=reflective_intent,
+        needs_external_evidence=needs_external_evidence,
+        needs_task_plan=needs_task_plan,
+        needs_multi_source_integration=needs_multi_source_integration,
+        low_confidence=low_confidence,
+        failure_wariness=failure_wariness,
+        approach=approach,
+        help_short=help_short,
+        decompose_min_complexity=decompose_min_complexity,
+        decompose_urgent_min_complexity=decompose_urgent_min_complexity,
+        decompose_max_ambiguity=decompose_max_ambiguity,
+    )
+
+    best_action, top_scores = _select_action(
+        scores,
+        intent_type=intent_type,
+        low_confidence=low_confidence,
+        threshold=threshold,
+        intent_margin=intent_margin,
+    )
+    reason = _action_reason(best_action)
 
     return {
         "action": best_action,
