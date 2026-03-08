@@ -126,6 +126,10 @@ def init_state() -> dict:
             "reflective_think_bonus": 0.14,
             "reflective_search_penalty": 0.10,
             "intent_margin": 0.12,
+            "enable_homeostasis": False,
+            "homeostasis_theta_safe": 0.55,
+            "homeostasis_eta": 0.05,
+            "homeostasis_alpha_near": 0.10,
         },
     }
 

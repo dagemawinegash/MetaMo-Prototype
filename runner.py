@@ -346,6 +346,7 @@ def main() -> None:
             error_tolerance = float(decision.get("error_tolerance", 0.0))
             creativity = float(decision.get("creativity", 0.0))
             score_top3 = decision.get("score_top3", [])
+            homeo_debug = engine_state.get("homeostasis_debug", {})
             complexity = float(ctx.get("complexity", 0.0))
             ambiguity = float(ctx.get("ambiguity", 0.0))
             expertise = float(ctx.get("expertise", 0.0))
@@ -363,6 +364,14 @@ def main() -> None:
             )
             valence_signal = float(ctx.get("valence", 0.0))
             answer = out.get("answer", "")
+
+            homeo_suffix = ""
+            if isinstance(homeo_debug, dict) and bool(
+                homeo_debug.get("enabled", False)
+            ):
+                mode = str(homeo_debug.get("mode", "interior"))
+                trigger_count = int(homeo_debug.get("trigger_count", 0))
+                homeo_suffix = f" homeo={mode}:{trigger_count}"
 
             print(
                 f"{i}. {action} | urgent={ctx.get('urgent')} "
@@ -420,6 +429,7 @@ def main() -> None:
                 f"valence={valence:.2f} "
                 f"arousal={arousal:.2f} risk_aversion={risk_aversion:.2f} "
                 f"err_tol={error_tolerance:.2f} creativity={creativity:.2f}"
+                f"{homeo_suffix}"
             )
             if isinstance(score_top3, list) and score_top3:
                 score_parts = []

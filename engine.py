@@ -12,6 +12,7 @@ from engine_state import (
     _goal_weights,
     init_state,
 )
+from homeostasis import apply_homeostatic_contractivity
 
 
 # Decision orchestration
@@ -292,6 +293,9 @@ def post_update(context: dict, state: dict, decision: dict) -> dict:
             float(anti_targets.get("premature", 0.30)),
             anti_alpha,
         )
+
+    # Optional phase-1 contractive update near homeostatic boundaries.
+    apply_homeostatic_contractivity(state)
 
     state["turn_count"] = int(state.get("turn_count", 0)) + 1
     return state
