@@ -5,7 +5,15 @@ from engine_state import _clamp01
 
 # Homeostatic scope
 OVERGOAL_KEYS = ("over_beneficial", "over_safety", "over_honesty")
-CORE_GOAL_KEYS = ("accuracy", "coherence", "efficiency")
+GOAL_KEYS = (
+    "accuracy",
+    "coherence",
+    "efficiency",
+    "knowledge",
+    "novelty",
+    "success_moderate",
+    "success_breakthrough",
+)
 MODULATOR_KEYS = (
     "threshold",
     "arousal",
@@ -17,11 +25,7 @@ MODULATOR_KEYS = (
     "user_expertise",
 )
 
-GOAL_BOUNDS = {
-    "accuracy": (0.0, 1.0),
-    "coherence": (0.0, 1.0),
-    "efficiency": (0.0, 1.0),
-}
+GOAL_DEFAULT_BOUNDS = (0.0, 1.0)
 
 MODULATOR_BOUNDS = {
     "threshold": (0.2, 0.95),
@@ -41,6 +45,10 @@ DEFAULT_CENTERS = {
     "accuracy": 0.70,
     "coherence": 0.58,
     "efficiency": 0.60,
+    "knowledge": 0.52,
+    "novelty": 0.46,
+    "success_moderate": 0.62,
+    "success_breakthrough": 0.44,
     "threshold": 0.30,
     "arousal": 0.40,
     "securing": 0.30,
@@ -87,11 +95,11 @@ def apply_homeostatic_contractivity(state: dict) -> dict:
 
     trigger_keys: list[str] = []
 
-    # Core quality goals with conservative [0, 1] bounds
-    for key in CORE_GOAL_KEYS:
+    # Non-overgoals use conservative [0, 1] bounds and one unified update path.
+    for key in GOAL_KEYS:
         if key not in goals:
             continue
-        lo, hi = GOAL_BOUNDS[key]
+        lo, hi = GOAL_DEFAULT_BOUNDS
         current = float(goals.get(key, DEFAULT_CENTERS[key]))
         if _near_boundary(current, lo, hi, eta):
             center = float(DEFAULT_CENTERS[key])
