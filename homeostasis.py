@@ -5,11 +5,20 @@ from engine_state import _clamp01
 
 # Homeostatic scope
 OVERGOAL_KEYS = ("over_beneficial", "over_safety", "over_honesty")
-MODULATOR_KEYS = ("threshold", "arousal")
+MODULATOR_KEYS = (
+    "threshold",
+    "arousal",
+    "securing",
+    "risk_aversion",
+    "failure_wariness",
+)
 
 MODULATOR_BOUNDS = {
     "threshold": (0.2, 0.95),
     "arousal": (0.1, 0.9),
+    "securing": (0.0, 1.0),
+    "risk_aversion": (0.0, 1.0),
+    "failure_wariness": (0.0, 1.0),
 }
 
 DEFAULT_CENTERS = {
@@ -18,6 +27,9 @@ DEFAULT_CENTERS = {
     "over_honesty": 0.65,
     "threshold": 0.30,
     "arousal": 0.40,
+    "securing": 0.30,
+    "risk_aversion": 0.40,
+    "failure_wariness": 0.10,
 }
 
 
