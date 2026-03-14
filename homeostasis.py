@@ -5,6 +5,7 @@ from engine_state import _clamp01
 
 # Homeostatic scope
 OVERGOAL_KEYS = ("over_beneficial", "over_safety", "over_honesty")
+CORE_GOAL_KEYS = ("accuracy", "coherence", "efficiency")
 MODULATOR_KEYS = (
     "threshold",
     "arousal",
@@ -15,6 +16,12 @@ MODULATOR_KEYS = (
     "resolution",
     "user_expertise",
 )
+
+GOAL_BOUNDS = {
+    "accuracy": (0.0, 1.0),
+    "coherence": (0.0, 1.0),
+    "efficiency": (0.0, 1.0),
+}
 
 MODULATOR_BOUNDS = {
     "threshold": (0.2, 0.95),
@@ -31,6 +38,9 @@ DEFAULT_CENTERS = {
     "over_beneficial": 0.60,
     "over_safety": 0.65,
     "over_honesty": 0.65,
+    "accuracy": 0.70,
+    "coherence": 0.58,
+    "efficiency": 0.60,
     "threshold": 0.30,
     "arousal": 0.40,
     "securing": 0.30,
@@ -76,6 +86,20 @@ def apply_homeostatic_contractivity(state: dict) -> dict:
     alpha_near = _clamp01(float(params.get("homeostasis_alpha_near", 0.10)))
 
     trigger_keys: list[str] = []
+
+    # Core quality goals with conservative [0, 1] bounds
+    for key in CORE_GOAL_KEYS:
+        if key not in goals:
+            continue
+        lo, hi = GOAL_BOUNDS[key]
+        current = float(goals.get(key, DEFAULT_CENTERS[key]))
+        if _near_boundary(current, lo, hi, eta):
+            center = float(DEFAULT_CENTERS[key])
+            updated = (1.0 - alpha_near) * current + alpha_near * center
+            goals[key] = _clamp_range(updated, lo, hi)
+            trigger_keys.append(f"goals.{key}")
+        else:
+            goals[key] = _clamp_range(current, lo, hi)
 
     # Overgoals: bounded by [theta_safe, 1.0]
     for key in OVERGOAL_KEYS:
