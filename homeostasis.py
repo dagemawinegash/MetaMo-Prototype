@@ -11,6 +11,9 @@ MODULATOR_KEYS = (
     "securing",
     "risk_aversion",
     "failure_wariness",
+    "topic_familiarity",
+    "resolution",
+    "user_expertise",
 )
 
 MODULATOR_BOUNDS = {
@@ -19,6 +22,9 @@ MODULATOR_BOUNDS = {
     "securing": (0.0, 1.0),
     "risk_aversion": (0.0, 1.0),
     "failure_wariness": (0.0, 1.0),
+    "topic_familiarity": (0.0, 1.0),
+    "resolution": (0.0, 1.0),
+    "user_expertise": (0.0, 1.0),
 }
 
 DEFAULT_CENTERS = {
@@ -30,6 +36,9 @@ DEFAULT_CENTERS = {
     "securing": 0.30,
     "risk_aversion": 0.40,
     "failure_wariness": 0.10,
+    "topic_familiarity": 0.50,
+    "resolution": 0.40,
+    "user_expertise": 0.50,
 }
 
 
