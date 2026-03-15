@@ -5,6 +5,7 @@ from engine_state import _clamp01
 
 # Homeostatic scope
 OVERGOAL_KEYS = ("over_beneficial", "over_safety", "over_honesty")
+ANTI_GOAL_KEYS = ("hallucinate", "redundant", "rabbit_hole", "premature")
 GOAL_KEYS = (
     "accuracy",
     "coherence",
@@ -65,6 +66,10 @@ DEFAULT_CENTERS = {
     "topic_familiarity": 0.50,
     "resolution": 0.40,
     "user_expertise": 0.50,
+    "hallucinate": 0.35,
+    "redundant": 0.30,
+    "rabbit_hole": 0.28,
+    "premature": 0.30,
 }
 
 
@@ -78,6 +83,32 @@ def _clamp_range(value: float, lo: float, hi: float) -> float:
 
 def _near_boundary(value: float, lo: float, hi: float, eta: float) -> bool:
     return value <= (lo + eta) or value >= (hi - eta)
+
+
+def _apply_scope_contractivity(
+    container: dict,
+    keys: tuple[str, ...],
+    bounds: tuple[float, float] | dict[str, tuple[float, float]],
+    eta: float,
+    alpha_near: float,
+    trigger_prefix: str,
+    trigger_keys: list[str],
+) -> None:
+    for key in keys:
+        if key not in container:
+            continue
+        if isinstance(bounds, dict):
+            lo, hi = bounds[key]
+        else:
+            lo, hi = bounds
+        current = float(container.get(key, DEFAULT_CENTERS[key]))
+        if _near_boundary(current, lo, hi, eta):
+            center = float(DEFAULT_CENTERS[key])
+            updated = (1.0 - alpha_near) * current + alpha_near * center
+            container[key] = _clamp_range(updated, lo, hi)
+            trigger_keys.append(f"{trigger_prefix}.{key}")
+        else:
+            container[key] = _clamp_range(current, lo, hi)
 
 
 def apply_homeostatic_contractivity(state: dict) -> dict:
@@ -96,6 +127,7 @@ def apply_homeostatic_contractivity(state: dict) -> dict:
 
     goals = state.get("goals", {})
     modulators = state.get("modulators", {})
+    anti_goals = state.get("anti_goals", {})
 
     theta_safe = _clamp01(float(params.get("homeostasis_theta_safe", 0.55)))
     eta = _clamp01(float(params.get("homeostasis_eta", 0.05)))
@@ -103,47 +135,22 @@ def apply_homeostatic_contractivity(state: dict) -> dict:
 
     trigger_keys: list[str] = []
 
-    # Non-overgoals use conservative [0, 1] bounds and one unified update path.
-    for key in GOAL_KEYS:
-        if key not in goals:
-            continue
-        lo, hi = GOAL_DEFAULT_BOUNDS
-        current = float(goals.get(key, DEFAULT_CENTERS[key]))
-        if _near_boundary(current, lo, hi, eta):
-            center = float(DEFAULT_CENTERS[key])
-            updated = (1.0 - alpha_near) * current + alpha_near * center
-            goals[key] = _clamp_range(updated, lo, hi)
-            trigger_keys.append(f"goals.{key}")
-        else:
-            goals[key] = _clamp_range(current, lo, hi)
-
-    # Overgoals: bounded by [theta_safe, 1.0]
-    for key in OVERGOAL_KEYS:
-        if key not in goals:
-            continue
-        lo, hi = theta_safe, 1.0
-        current = float(goals.get(key, DEFAULT_CENTERS[key]))
-        if _near_boundary(current, lo, hi, eta):
-            center = float(DEFAULT_CENTERS[key])
-            updated = (1.0 - alpha_near) * current + alpha_near * center
-            goals[key] = _clamp_range(updated, lo, hi)
-            trigger_keys.append(f"goals.{key}")
-        else:
-            goals[key] = _clamp_range(current, lo, hi)
-
-    # Selected modulators with explicit bounds from the paper
-    for key in MODULATOR_KEYS:
-        if key not in modulators:
-            continue
-        lo, hi = MODULATOR_BOUNDS[key]
-        current = float(modulators.get(key, DEFAULT_CENTERS[key]))
-        if _near_boundary(current, lo, hi, eta):
-            center = float(DEFAULT_CENTERS[key])
-            updated = (1.0 - alpha_near) * current + alpha_near * center
-            modulators[key] = _clamp_range(updated, lo, hi)
-            trigger_keys.append(f"modulators.{key}")
-        else:
-            modulators[key] = _clamp_range(current, lo, hi)
+    scope_specs = [
+        (goals, GOAL_KEYS, GOAL_DEFAULT_BOUNDS, "goals"),
+        (goals, OVERGOAL_KEYS, (theta_safe, 1.0), "goals"),
+        (anti_goals, ANTI_GOAL_KEYS, GOAL_DEFAULT_BOUNDS, "anti_goals"),
+        (modulators, MODULATOR_KEYS, MODULATOR_BOUNDS, "modulators"),
+    ]
+    for container, keys, bounds, trigger_prefix in scope_specs:
+        _apply_scope_contractivity(
+            container=container,
+            keys=keys,
+            bounds=bounds,
+            eta=eta,
+            alpha_near=alpha_near,
+            trigger_prefix=trigger_prefix,
+            trigger_keys=trigger_keys,
+        )
 
     debug = {
         "enabled": True,
