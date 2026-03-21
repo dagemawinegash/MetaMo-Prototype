@@ -132,12 +132,21 @@ def node_prompt_shaper(state: GraphState) -> GraphState:
     complexity = float(ctx.get("complexity", 0.3))
 
     if decision["action"] == "act_respond":
-        style = "Be concise and direct."
-        if expertise <= 0.4:
-            style += " Use beginner-friendly language."
-        elif expertise >= 0.7:
-            style += " Use expert-level concise wording."
-        if urgency >= 0.6:
+        style_modifier = str(decision.get("style_modifier") or "style_concise")
+        style_map = {
+            "style_concise": "Be concise and direct.",
+            "style_thorough": "Be thorough, structured, and complete.",
+            "style_exploratory": "Be exploratory and connect non-obvious ideas carefully.",
+            "style_cautious": "Be cautious, explicit about uncertainty, and avoid overclaiming.",
+            "style_tutorial": "Be tutorial and beginner-friendly with simple explanations.",
+        }
+        style = style_map.get(style_modifier, "Be concise and direct.")
+        if style_modifier != "style_tutorial":
+            if expertise <= 0.4:
+                style += " Use beginner-friendly language."
+            elif expertise >= 0.7:
+                style += " Use expert-level concise wording."
+        if urgency >= 0.6 and style_modifier == "style_concise":
             style = "Be extremely concise and direct."
         system = (
             f"You are Qwestor. {style} "

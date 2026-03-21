@@ -15,6 +15,52 @@ from engine_state import (
 from homeostasis import apply_homeostatic_contractivity
 
 
+def _determine_respond_style(
+    *,
+    urgency: float,
+    complexity: float,
+    ambiguity: float,
+    user_expertise: float,
+    threshold: float,
+    failure_wariness: float,
+    low_confidence: float,
+    resolution: float,
+    approach: float,
+    creativity: float,
+    risk_aversion: float,
+    verify_request: bool,
+) -> str:
+    style_scores = {
+        "style_concise": 0.40
+        + 0.70 * urgency
+        + 0.20 * (1.0 - complexity)
+        + 0.15 * (1.0 - ambiguity),
+        "style_thorough": 0.35
+        + 0.55 * complexity
+        + 0.45 * resolution
+        + 0.15 * ambiguity
+        - 0.35 * urgency,
+        "style_exploratory": 0.30
+        + 0.55 * creativity
+        + 0.40 * approach
+        + 0.20 * complexity
+        - 0.35 * threshold
+        - 0.20 * risk_aversion
+        - 0.20 * failure_wariness,
+        "style_cautious": 0.35
+        + 0.55 * threshold
+        + 0.45 * low_confidence
+        + 0.30 * failure_wariness
+        + 0.20 * risk_aversion
+        + (0.25 if verify_request else 0.0),
+        "style_tutorial": 0.35
+        + 0.70 * (1.0 - user_expertise)
+        + 0.20 * ambiguity
+        + 0.10 * complexity,
+    }
+    return max(style_scores, key=style_scores.get)
+
+
 # Decision orchestration
 def step(context: dict, state: dict) -> dict:
     goals = state["goals"]
@@ -174,10 +220,27 @@ def step(context: dict, state: dict) -> dict:
         threshold=threshold,
         intent_margin=intent_margin,
     )
+    style_modifier = None
+    if best_action == "act_respond":
+        style_modifier = _determine_respond_style(
+            urgency=u,
+            complexity=cx,
+            ambiguity=ambiguity,
+            user_expertise=ux,
+            threshold=threshold,
+            failure_wariness=failure_wariness,
+            low_confidence=low_confidence,
+            resolution=res,
+            approach=approach,
+            creativity=creativity,
+            risk_aversion=risk_aversion,
+            verify_request=verify_request,
+        )
     reason = _action_reason(best_action)
 
     return {
         "action": best_action,
+        "style_modifier": style_modifier,
         "reason": reason,
         "cold_weight": cold_weight,
         "turn_count": turn_count,
