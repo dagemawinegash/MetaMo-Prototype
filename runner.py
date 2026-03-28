@@ -37,6 +37,21 @@ def load_sessions(base_dir: Path) -> list[dict]:
             raise ValueError(
                 f"Session #{i} expected_actions length must match queries length"
             )
+        acceptable_actions = session.get("acceptable_actions")
+        if acceptable_actions is None:
+            acceptable_actions = [[] for _ in session["queries"]]
+            session["acceptable_actions"] = acceptable_actions
+        if not isinstance(acceptable_actions, list):
+            raise ValueError(f"Session #{i} acceptable_actions must be a list")
+        if len(acceptable_actions) != len(session["queries"]):
+            raise ValueError(
+                f"Session #{i} acceptable_actions length must match queries length"
+            )
+        for j, item in enumerate(acceptable_actions, start=1):
+            if not isinstance(item, list):
+                raise ValueError(
+                    f"Session #{i} acceptable_actions turn #{j} must be a list"
+                )
 
     return sessions
 
@@ -48,6 +63,8 @@ def main() -> None:
     strict_session_records: list[dict] = []
     total_correct = 0
     total_turns = 0
+    soft_total_score = 0.0
+    soft_credit = 0.8
 
     with RunLogger(sessions, Path(__file__).resolve().parent) as run_logger:
         for session in sessions:
@@ -55,11 +72,13 @@ def main() -> None:
             print("=" * len(session["name"]))
             engine_state = init_engine_state()
             expected_actions = session["expected_actions"]
+            acceptable_actions = session["acceptable_actions"]
             session_correct = 0
             session_turns = 0
+            session_soft_score = 0.0
 
-            for i, (q, expected_action) in enumerate(
-                zip(session["queries"], expected_actions), start=1
+            for i, (q, expected_action, acceptable_for_turn) in enumerate(
+                zip(session["queries"], expected_actions, acceptable_actions), start=1
             ):
                 out = app.invoke({"query": q, "engine_state": engine_state})
                 engine_state = out.get("engine_state", engine_state)
@@ -72,20 +91,31 @@ def main() -> None:
 
                 action = decision.get("action", "?")
                 strict_correct = int(action == expected_action)
+                acceptable_hit = int(
+                    action in acceptable_for_turn and not strict_correct
+                )
+                soft_score = (
+                    1.0 if strict_correct else (soft_credit if acceptable_hit else 0.0)
+                )
                 strict_turn_records.append(
                     {
                         "session": session["name"],
                         "turn": i,
                         "query": q,
                         "expected_action": expected_action,
+                        "acceptable_actions": acceptable_for_turn,
                         "predicted_action": action,
                         "strict_correct": strict_correct,
+                        "acceptable_hit": acceptable_hit,
+                        "soft_score": soft_score,
                     }
                 )
                 session_correct += strict_correct
                 session_turns += 1
                 total_correct += strict_correct
                 total_turns += 1
+                session_soft_score += soft_score
+                soft_total_score += soft_score
                 style_modifier = str(
                     decision.get("style_modifier")
                     if decision.get("style_modifier") is not None
@@ -270,6 +300,12 @@ def main() -> None:
                     "strict_correct": session_correct,
                     "turn_count": session_turns,
                     "strict_accuracy": session_accuracy,
+                    "soft_score_sum": session_soft_score,
+                    "soft_accuracy": (
+                        float(session_soft_score) / float(session_turns)
+                        if session_turns
+                        else 0.0
+                    ),
                 }
             )
 
@@ -286,6 +322,11 @@ def main() -> None:
             "strict_correct": total_correct,
             "turn_count": total_turns,
             "strict_accuracy": overall_accuracy,
+            "soft_score_sum": soft_total_score,
+            "soft_accuracy": (
+                float(soft_total_score) / float(total_turns) if total_turns else 0.0
+            ),
+            "soft_credit_for_acceptable": soft_credit,
         }
 
         with strict_per_turn_path.open("w", encoding="utf-8") as f:
@@ -298,7 +339,10 @@ def main() -> None:
         print(
             f"\nStrict accuracy: {total_correct}/{total_turns} = {overall_accuracy:.3f}"
         )
-        print(f"Saved strict eval files to {eval_dir}")
+        print(
+            f"Soft accuracy: {soft_total_score:.1f}/{total_turns} = {strict_overall['soft_accuracy']:.3f}"
+        )
+        print(f"Saved eval files to {eval_dir}")
 
     print(f"\nSaved logs to {run_logger.logs_dir}")
 
