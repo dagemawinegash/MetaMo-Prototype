@@ -102,6 +102,47 @@ def _llm_text(out) -> str:
     return str(content)
 
 
+def _context_config(state: GraphState) -> tuple[bool, int]:
+    engine_state = state.get("engine_state") or {}
+    params = engine_state.get("params", {})
+    enabled = bool(params.get("enable_context_memory", False))
+    window = int(params.get("context_window_turns", 2))
+    return enabled, window
+
+
+def _recent_history(state: GraphState) -> list[dict[str, str]]:
+    enabled, window = _context_config(state)
+    if not enabled or window <= 0:
+        return []
+    engine_state = state.get("engine_state") or {}
+    context_history = engine_state.get("context_history", [])
+    if not isinstance(context_history, list):
+        return []
+    recent = context_history[-window:]
+    turns: list[dict[str, str]] = []
+    for item in recent:
+        if isinstance(item, dict):
+            turns.append(
+                {
+                    "query": str(item.get("query", "")),
+                    "answer": str(item.get("answer", "")),
+                }
+            )
+    return turns
+
+
+def _history_block(state: GraphState) -> str:
+    turns = _recent_history(state)
+    if not turns:
+        return ""
+    lines = ["Recent conversation context:"]
+    for i, turn in enumerate(turns, start=1):
+        idx = len(turns) - i + 1
+        lines.append(f"Turn -{idx} user: {turn.get('query', '')}")
+        lines.append(f"Turn -{idx} assistant: {turn.get('answer', '')}")
+    return "\n\n" + "\n".join(lines)
+
+
 # -----------------------------
 # Graph nodes
 # -----------------------------
@@ -109,8 +150,11 @@ def _llm_text(out) -> str:
 
 def node_context_parser(state: GraphState) -> GraphState:
     query = state["query"]
+    history_turns = _recent_history(state)
+
     ctx = parse_context(
         query,
+        history_turns=history_turns,
         model=_get_model(),
         provider=_get_provider(),
     )
@@ -211,7 +255,12 @@ def route_action(state: GraphState) -> Action:
 
 def node_quick_answer(state: GraphState) -> GraphState:
     llm = _llm()
-    prompt = state["system_prompt"] + "\n\nUser query: " + state["query"]
+    prompt = (
+        state["system_prompt"]
+        + _history_block(state)
+        + "\n\nUser query: "
+        + state["query"]
+    )
     out = llm.invoke(prompt)
     return {"answer": _llm_text(out)}
 
@@ -228,21 +277,36 @@ def node_simulated_search(state: GraphState) -> GraphState:
 
 def node_clarify(state: GraphState) -> GraphState:
     llm = _llm()
-    prompt = state["system_prompt"] + "\n\nUser query: " + state["query"]
+    prompt = (
+        state["system_prompt"]
+        + _history_block(state)
+        + "\n\nUser query: "
+        + state["query"]
+    )
     out = llm.invoke(prompt)
     return {"answer": _llm_text(out)}
 
 
 def node_decompose(state: GraphState) -> GraphState:
     llm = _llm()
-    prompt = state["system_prompt"] + "\n\nUser query: " + state["query"]
+    prompt = (
+        state["system_prompt"]
+        + _history_block(state)
+        + "\n\nUser query: "
+        + state["query"]
+    )
     out = llm.invoke(prompt)
     return {"answer": _llm_text(out)}
 
 
 def node_think(state: GraphState) -> GraphState:
     llm = _llm()
-    prompt = state["system_prompt"] + "\n\nUser query: " + state["query"]
+    prompt = (
+        state["system_prompt"]
+        + _history_block(state)
+        + "\n\nUser query: "
+        + state["query"]
+    )
     out = llm.invoke(prompt)
     return {"answer": _llm_text(out)}
 
@@ -252,6 +316,7 @@ def node_research_synthesis(state: GraphState) -> GraphState:
     findings_text = "\n".join(f"- {f}" for f in state.get("findings", []))
     prompt = (
         state["system_prompt"]
+        + _history_block(state)
         + "\n\nUse these notes:\n"
         + findings_text
         + "\n\nUser query: "
@@ -266,6 +331,7 @@ def node_search_evidence(state: GraphState) -> GraphState:
     findings_text = "\n".join(f"- {f}" for f in state.get("findings", []))
     prompt = (
         state["system_prompt"]
+        + _history_block(state)
         + "\n\nEvidence notes gathered:\n"
         + findings_text
         + "\n\nUser query: "
@@ -281,6 +347,7 @@ def node_verify_synthesis(state: GraphState) -> GraphState:
     findings_text = "\n".join(f"- {f}" for f in state.get("findings", []))
     prompt = (
         state["system_prompt"]
+        + _history_block(state)
         + "\n\nVerification notes:\n"
         + findings_text
         + "\n\nUser query: "
@@ -295,6 +362,16 @@ def node_post_update(state: GraphState) -> GraphState:
     updated_state = engine_post_update(
         context=state["context"], state=engine_state, decision=state["decision"]
     )
+    context_history = updated_state.get("context_history", [])
+    if not isinstance(context_history, list):
+        context_history = []
+    context_history.append(
+        {
+            "query": str(state.get("query", "")),
+            "answer": str(state.get("answer", "")),
+        }
+    )
+    updated_state["context_history"] = context_history
     return {"engine_state": updated_state}
 
 

@@ -25,6 +25,7 @@ def _get_model(provider: str) -> str:
 
 def parse_context(
     query: str,
+    history_turns: list[dict[str, str]] | None = None,
     model: str | None = None,
     provider: str | None = None,
 ) -> dict[str, Any]:
@@ -46,12 +47,14 @@ def parse_context(
         if active_provider == "openai":
             parsed = _parse_with_openai(
                 query=query,
+                history_turns=history_turns,
                 api_key=api_key,
                 model=active_model,
             )
         else:
             parsed = _parse_with_gemini(
                 query=query,
+                history_turns=history_turns,
                 api_key=api_key,
                 model=active_model,
             )
@@ -117,7 +120,28 @@ def _calibrate_action_signals(
     return (_clamp01(evid), _clamp01(plan), _clamp01(multi))
 
 
-def _parse_with_gemini(query: str, api_key: str, model: str) -> dict[str, Any] | None:
+def _build_context_input(
+    query: str, history_turns: list[dict[str, str]] | None = None
+) -> str:
+    if not history_turns:
+        return f"Current user query:\n{query}"
+
+    parts = ["Recent conversation context:"]
+    for i, turn in enumerate(history_turns, start=1):
+        user_q = str(turn.get("query", "")).strip()
+        assistant_a = str(turn.get("answer", "")).strip()
+        parts.append(f"Turn -{len(history_turns) - i + 1} user: {user_q}")
+        parts.append(f"Turn -{len(history_turns) - i + 1} assistant: {assistant_a}")
+    parts.append(f"Current user query:\n{query}")
+    return "\n".join(parts)
+
+
+def _parse_with_gemini(
+    query: str,
+    history_turns: list[dict[str, str]] | None,
+    api_key: str,
+    model: str,
+) -> dict[str, Any] | None:
     try:
         messages_mod = importlib.import_module("langchain_core.messages")
         genai_mod = importlib.import_module("langchain_google_genai")
@@ -146,7 +170,10 @@ def _parse_with_gemini(query: str, api_key: str, model: str) -> dict[str, Any] |
             "Interpretation: failure_signal is high when the user indicates previous answer/correction problems."
         )
 
-        out = llm.invoke([SystemMessage(content=system), HumanMessage(content=query)])
+        user_input = _build_context_input(query, history_turns)
+        out = llm.invoke(
+            [SystemMessage(content=system), HumanMessage(content=user_input)]
+        )
         raw = out.content if hasattr(out, "content") else str(out)
         payload = _extract_json(_to_text(raw))
 
@@ -227,7 +254,12 @@ def _parse_with_gemini(query: str, api_key: str, model: str) -> dict[str, Any] |
         return None
 
 
-def _parse_with_openai(query: str, api_key: str, model: str) -> dict[str, Any] | None:
+def _parse_with_openai(
+    query: str,
+    history_turns: list[dict[str, str]] | None,
+    api_key: str,
+    model: str,
+) -> dict[str, Any] | None:
     try:
         messages_mod = importlib.import_module("langchain_core.messages")
         openai_mod = importlib.import_module("langchain_openai")
@@ -256,7 +288,10 @@ def _parse_with_openai(query: str, api_key: str, model: str) -> dict[str, Any] |
             "Interpretation: failure_signal is high when the user indicates previous answer/correction problems."
         )
 
-        out = llm.invoke([SystemMessage(content=system), HumanMessage(content=query)])
+        user_input = _build_context_input(query, history_turns)
+        out = llm.invoke(
+            [SystemMessage(content=system), HumanMessage(content=user_input)]
+        )
         raw = out.content if hasattr(out, "content") else str(out)
         payload = _extract_json(_to_text(raw))
 

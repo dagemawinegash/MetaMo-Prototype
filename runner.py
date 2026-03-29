@@ -88,6 +88,9 @@ def main() -> None:
                 mods = engine_state.get("modulators", {})
                 goals = engine_state.get("goals", {})
                 anti_goals = engine_state.get("anti_goals", {})
+                params = engine_state.get("params", {})
+                context_memory_enabled = bool(params.get("enable_context_memory", False))
+                context_window_turns = int(params.get("context_window_turns", 0))
 
                 action = decision.get("action", "?")
                 strict_correct = int(action == expected_action)
@@ -217,6 +220,8 @@ def main() -> None:
                     homeo_mode=homeo_mode,
                     homeo_trigger_count=homeo_trigger_count,
                     homeo_trigger_keys=homeo_trigger_keys,
+                    context_memory_enabled=context_memory_enabled,
+                    context_window_turns=context_window_turns,
                     score_top3=score_top3,
                     score_top3_text=score_top3_text,
                     answer=answer,
@@ -283,6 +288,8 @@ def main() -> None:
                     f"valence={valence:.2f} "
                     f"arousal={arousal:.2f} risk_aversion={risk_aversion:.2f} "
                     f"err_tol={error_tolerance:.2f} creativity={creativity:.2f}"
+                    f" ctx_mem={'on' if context_memory_enabled else 'off'}"
+                    f" ctx_k={context_window_turns}"
                     f"{style_suffix}"
                     f"{homeo_suffix}"
                 )

@@ -35,6 +35,8 @@ CSV_FIELDS = [
     "homeo_mode",
     "homeo_trigger_count",
     "homeo_trigger_keys",
+    "context_memory_enabled",
+    "context_window_turns",
     "score_top3",
     "answer",
 ]
@@ -139,6 +141,8 @@ class RunLogger:
         homeo_mode: str,
         homeo_trigger_count: int,
         homeo_trigger_keys: list[str],
+        context_memory_enabled: bool,
+        context_window_turns: int,
         score_top3: Any,
         score_top3_text: str,
         answer: str,
@@ -168,6 +172,10 @@ class RunLogger:
                 "mode": homeo_mode,
                 "trigger_count": homeo_trigger_count,
                 "trigger_keys": homeo_trigger_keys,
+            },
+            "context_memory": {
+                "enabled": bool(context_memory_enabled),
+                "window_turns": int(context_window_turns),
             },
             "answer": answer,
         }
@@ -204,6 +212,8 @@ class RunLogger:
                 "homeo_mode": homeo_mode,
                 "homeo_trigger_count": homeo_trigger_count,
                 "homeo_trigger_keys": "|".join(homeo_trigger_keys),
+                "context_memory_enabled": str(bool(context_memory_enabled)).lower(),
+                "context_window_turns": int(context_window_turns),
                 "score_top3": score_top3_text,
                 "answer": answer,
             }

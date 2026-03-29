@@ -64,6 +64,7 @@ def _coerce_verify_request(value: object) -> bool:
 def init_state() -> dict:
     return {
         "turn_count": 0,
+        "context_history": [],
         "goals": {
             "efficiency": 0.60,
             "accuracy": 0.70,
@@ -127,6 +128,8 @@ def init_state() -> dict:
             "reflective_search_penalty": 0.10,
             "intent_margin": 0.12,
             "enable_homeostasis": False,
+            "enable_context_memory": False,
+            "context_window_turns": 2,
             "homeostasis_theta_safe": 0.55,
             "homeostasis_eta": 0.05,
             "homeostasis_alpha_near": 0.10,
