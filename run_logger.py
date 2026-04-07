@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import csv
+import copy
 import json
 from datetime import datetime
 from pathlib import Path
@@ -148,9 +149,8 @@ class RunLogger:
         answer: str,
         context: dict[str, Any],
         decision: dict[str, Any],
-        modulators: dict[str, Any],
-        goals: dict[str, Any],
-        anti_goals: dict[str, Any],
+        pre_update: dict[str, Any],
+        post_update: dict[str, Any],
     ) -> None:
         turn_timestamp = datetime.now().isoformat(timespec="seconds")
 
@@ -160,18 +160,14 @@ class RunLogger:
             "session": session_name,
             "turn": turn,
             "query": query,
-            "action": action,
-            "style_modifier": style_modifier,
-            "score_top3": score_top3,
-            "context": context,
-            "decision": decision,
-            "modulators": modulators,
-            "goals": goals,
-            "anti_goals": anti_goals,
+            "context": copy.deepcopy(context),
+            "decision": copy.deepcopy(decision),
+            "pre_update": copy.deepcopy(pre_update),
+            "post_update": copy.deepcopy(post_update),
             "homeostasis": {
                 "mode": homeo_mode,
                 "trigger_count": homeo_trigger_count,
-                "trigger_keys": homeo_trigger_keys,
+                "trigger_keys": copy.deepcopy(homeo_trigger_keys),
             },
             "context_memory": {
                 "enabled": bool(context_memory_enabled),

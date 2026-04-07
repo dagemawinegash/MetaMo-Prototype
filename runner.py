@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import copy
 import importlib.util
 import json
 
@@ -80,6 +81,7 @@ def main() -> None:
             for i, (q, expected_action, acceptable_for_turn) in enumerate(
                 zip(session["queries"], expected_actions, acceptable_actions), start=1
             ):
+                pre_engine_state = copy.deepcopy(engine_state)
                 out = app.invoke({"query": q, "engine_state": engine_state})
                 engine_state = out.get("engine_state", engine_state)
 
@@ -89,7 +91,9 @@ def main() -> None:
                 goals = engine_state.get("goals", {})
                 anti_goals = engine_state.get("anti_goals", {})
                 params = engine_state.get("params", {})
-                context_memory_enabled = bool(params.get("enable_context_memory", False))
+                context_memory_enabled = bool(
+                    params.get("enable_context_memory", False)
+                )
                 context_window_turns = int(params.get("context_window_turns", 0))
 
                 action = decision.get("action", "?")
@@ -193,6 +197,27 @@ def main() -> None:
                     if action == "act_respond" and style_modifier
                     else ""
                 )
+                decision_min = {
+                    "action": action,
+                    "style_modifier": (
+                        style_modifier
+                        if action == "act_respond" and style_modifier
+                        else None
+                    ),
+                    "reason": str(decision.get("reason", "")),
+                    "score_top3": copy.deepcopy(score_top3),
+                }
+                pre_update = {
+                    "cold_weight": float(decision.get("cold_weight", 0.0)),
+                    "modulators": copy.deepcopy(pre_engine_state.get("modulators", {})),
+                    "goals": copy.deepcopy(pre_engine_state.get("goals", {})),
+                    "anti_goals": copy.deepcopy(pre_engine_state.get("anti_goals", {})),
+                }
+                post_update = {
+                    "modulators": copy.deepcopy(engine_state.get("modulators", {})),
+                    "goals": copy.deepcopy(engine_state.get("goals", {})),
+                    "anti_goals": copy.deepcopy(engine_state.get("anti_goals", {})),
+                }
 
                 run_logger.log_turn(
                     session_name=session["name"],
@@ -226,10 +251,9 @@ def main() -> None:
                     score_top3_text=score_top3_text,
                     answer=answer,
                     context=ctx,
-                    decision=decision,
-                    modulators=mods,
-                    goals=goals,
-                    anti_goals=anti_goals,
+                    decision=decision_min,
+                    pre_update=pre_update,
+                    post_update=post_update,
                 )
 
                 print(
