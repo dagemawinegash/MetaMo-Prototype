@@ -5,6 +5,7 @@ import importlib
 from typing import Any, TypedDict, Literal
 
 from dotenv import load_dotenv
+from utils import resolve_provider_and_model_name
 
 from engine import init_state as init_engine_state
 from engine import post_update as engine_post_update
@@ -38,24 +39,9 @@ class GraphState(TypedDict, total=False):
 # -----------------------------
 
 
-def _get_provider() -> str:
-    load_dotenv()
-    provider = os.getenv("LLM_PROVIDER", "gemini").strip().lower()
-    if provider not in {"gemini", "openai"}:
-        raise RuntimeError("Unsupported LLM_PROVIDER. Use 'gemini' or 'openai'.")
-    return provider
-
-
-def _get_model() -> str:
-    provider = _get_provider()
-    if provider == "openai":
-        return os.getenv("OPENAI_MODEL", "gpt-4.1-mini")
-    return os.getenv("GEMINI_MODEL", "gemini-3-flash-preview")
-
-
 def _llm() -> Any:
     load_dotenv()
-    provider = _get_provider()
+    provider, model_name = resolve_provider_and_model_name()
 
     if provider == "openai":
         api_key = os.getenv("OPENAI_API_KEY")
@@ -64,7 +50,7 @@ def _llm() -> Any:
         openai_mod = importlib.import_module("langchain_openai")
         ChatOpenAI = getattr(openai_mod, "ChatOpenAI")
         return ChatOpenAI(
-            model=_get_model(),
+            model=model_name,
             temperature=0.3,
             api_key=api_key,
         )
@@ -77,7 +63,7 @@ def _llm() -> Any:
     ChatGoogleGenerativeAI = getattr(genai_mod, "ChatGoogleGenerativeAI")
 
     return ChatGoogleGenerativeAI(
-        model=_get_model(),
+        model=model_name,
         temperature=0.3,
         google_api_key=api_key,
     )
@@ -151,12 +137,13 @@ def _history_block(state: GraphState) -> str:
 def node_context_parser(state: GraphState) -> GraphState:
     query = state["query"]
     history_turns = _recent_history(state)
+    provider_name, model_name = resolve_provider_and_model_name()
 
     ctx = parse_context(
         query,
         history_turns=history_turns,
-        model=_get_model(),
-        provider=_get_provider(),
+        model=model_name,
+        provider=provider_name,
     )
     return {"context": ctx}
 

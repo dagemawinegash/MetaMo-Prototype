@@ -7,12 +7,12 @@ from engine_state import (
     _anti_goal_targets,
     _appraise_modulators,
     _blend,
-    _clamp01,
     _goal_targets,
     _goal_weights,
     init_state,
 )
 from homeostasis import apply_homeostatic_contractivity
+from utils import clamp_to_unit_interval
 
 
 def _determine_respond_style(
@@ -109,11 +109,11 @@ def step(context: dict, state: dict) -> dict:
     creativity = float(appraisal["creativity"])
     valence = float(appraisal["valence"])
 
-    confidence = _clamp01(
+    confidence = clamp_to_unit_interval(
         0.55 * familiarity + 0.25 * (1.0 - ambiguity) + 0.20 * (1.0 - cx)
     )
-    low_confidence = _clamp01(1.0 - confidence)
-    answerability = _clamp01(
+    low_confidence = clamp_to_unit_interval(1.0 - confidence)
+    answerability = clamp_to_unit_interval(
         (1.0 - ambiguity) * (1.0 - threshold_signal) * familiarity_signal
     )
 

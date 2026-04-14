@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from utils import clamp_to_signed_unit_interval, clamp_to_unit_interval
+
 # Constants / baselines
 ACTION_BLOCKED_SCORE = -1e9
 ACTION_ACTIVE_FLOOR = -1e8
@@ -28,26 +30,8 @@ DEFAULT_ALPHA_PARAMS = {
     "valence_alpha": 0.40,
 }
 
-
-# Utility helpers
-def _clamp01(value: float) -> float:
-    if value < 0.0:
-        return 0.0
-    if value > 1.0:
-        return 1.0
-    return value
-
-
-def _clamp11(value: float) -> float:
-    if value < -1.0:
-        return -1.0
-    if value > 1.0:
-        return 1.0
-    return value
-
-
 def _blend(prev: float, target: float, alpha: float) -> float:
-    return _clamp01((1.0 - alpha) * prev + alpha * target)
+    return clamp_to_unit_interval((1.0 - alpha) * prev + alpha * target)
 
 
 def _coerce_verify_request(value: object) -> bool:
@@ -127,9 +111,9 @@ def init_state() -> dict:
             "reflective_think_bonus": 0.14,
             "reflective_search_penalty": 0.10,
             "intent_margin": 0.12,
-            "enable_homeostasis": False,
-            "enable_context_memory": False,
-            "context_window_turns": 2,
+            "enable_homeostasis": True,
+            "enable_context_memory": True,
+            "context_window_turns": 3,
             "homeostasis_theta_safe": 0.55,
             "homeostasis_eta": 0.05,
             "homeostasis_alpha_near": 0.10,
@@ -185,13 +169,13 @@ def _goal_weights(
         + 0.25 * (1.0 - low_confidence)
         + 0.20 * threshold
         + 0.10 * (1.0 - urgency)
-        + 0.08 * _clamp01((valence + 1.0) * 0.5)
+        + 0.08 * clamp_to_unit_interval((valence + 1.0) * 0.5)
     )
     originality_base = float(goals.get("originality", 0.48)) * (
         0.45
         + 0.40 * complexity
         + 0.30 * resolution
-        + 0.20 * _clamp01((valence + 1.0) * 0.5)
+        + 0.20 * clamp_to_unit_interval((valence + 1.0) * 0.5)
         - 0.15 * urgency
         - 0.10 * threshold
     )
@@ -199,7 +183,7 @@ def _goal_weights(
         0.55
         + 0.35 * (1.0 - low_confidence)
         + 0.20 * urgency
-        + 0.10 * _clamp01((valence + 1.0) * 0.5)
+        + 0.10 * clamp_to_unit_interval((valence + 1.0) * 0.5)
     )
     beneficial_base = float(goals.get("over_beneficial", 0.60)) * (
         0.60 + 0.45 * threshold + 0.40 * securing + 0.30 * low_confidence
@@ -392,20 +376,20 @@ def _goal_targets(context: dict, decision: dict) -> dict:
         target_over_honesty += 0.04
 
     return {
-        "efficiency": _clamp01(target_efficiency),
-        "accuracy": _clamp01(target_accuracy),
-        "success_moderate": _clamp01(target_success_moderate),
-        "knowledge": _clamp01(target_knowledge),
-        "novelty": _clamp01(target_novelty),
-        "success_breakthrough": _clamp01(target_success_breakthrough),
-        "coherence": _clamp01(target_coherence),
-        "originality": _clamp01(target_originality),
-        "social": _clamp01(target_social),
-        "help_short": _clamp01(target_help_short),
-        "help_long": _clamp01(target_help_long),
-        "over_beneficial": _clamp01(target_over_beneficial),
-        "over_safety": _clamp01(target_over_safety),
-        "over_honesty": _clamp01(target_over_honesty),
+        "efficiency": clamp_to_unit_interval(target_efficiency),
+        "accuracy": clamp_to_unit_interval(target_accuracy),
+        "success_moderate": clamp_to_unit_interval(target_success_moderate),
+        "knowledge": clamp_to_unit_interval(target_knowledge),
+        "novelty": clamp_to_unit_interval(target_novelty),
+        "success_breakthrough": clamp_to_unit_interval(target_success_breakthrough),
+        "coherence": clamp_to_unit_interval(target_coherence),
+        "originality": clamp_to_unit_interval(target_originality),
+        "social": clamp_to_unit_interval(target_social),
+        "help_short": clamp_to_unit_interval(target_help_short),
+        "help_long": clamp_to_unit_interval(target_help_long),
+        "over_beneficial": clamp_to_unit_interval(target_over_beneficial),
+        "over_safety": clamp_to_unit_interval(target_over_safety),
+        "over_honesty": clamp_to_unit_interval(target_over_honesty),
     }
 
 
@@ -448,10 +432,10 @@ def _anti_goal_targets(context: dict, goals: dict) -> dict:
     )
 
     return {
-        "hallucinate": _clamp01(hallucinate_target),
-        "redundant": _clamp01(redundant_target),
-        "rabbit_hole": _clamp01(rabbit_hole_target),
-        "premature": _clamp01(premature_target),
+        "hallucinate": clamp_to_unit_interval(hallucinate_target),
+        "redundant": clamp_to_unit_interval(redundant_target),
+        "rabbit_hole": clamp_to_unit_interval(rabbit_hole_target),
+        "premature": clamp_to_unit_interval(premature_target),
     }
 
 
@@ -521,86 +505,86 @@ def _appraise_modulators(context: dict, state: dict, mods: dict, params: dict) -
             else 0.15 if intent_type == "factual" else 0.50
         )
     else:
-        reflective_intent = _clamp01(float(reflective_intent_raw))
-    needs_external_evidence = _clamp01(
+        reflective_intent = clamp_to_unit_interval(float(reflective_intent_raw))
+    needs_external_evidence = clamp_to_unit_interval(
         float(context.get("needs_external_evidence", 0.3))
     )
-    needs_task_plan = _clamp01(float(context.get("needs_task_plan", 0.2)))
-    needs_multi_source_integration = _clamp01(
+    needs_task_plan = clamp_to_unit_interval(float(context.get("needs_task_plan", 0.2)))
+    needs_multi_source_integration = clamp_to_unit_interval(
         float(context.get("needs_multi_source_integration", 0.3))
     )
-    valence_signal = _clamp11(float(context.get("valence", 0.0)))
+    valence_signal = clamp_to_signed_unit_interval(float(context.get("valence", 0.0)))
 
     target_u = 1.0 if urgent_flag else 0.0
-    mods["urgency"] = _clamp01(
+    mods["urgency"] = clamp_to_unit_interval(
         (1.0 - urgency_alpha) * float(mods["urgency"]) + urgency_alpha * target_u
     )
-    mods["resolution"] = _clamp01(
+    mods["resolution"] = clamp_to_unit_interval(
         (1.0 - resolution_alpha) * float(mods.get("resolution", 0.4))
         + resolution_alpha * cx
     )
-    mods["user_expertise"] = _clamp01(
+    mods["user_expertise"] = clamp_to_unit_interval(
         (1.0 - expertise_alpha) * float(mods.get("user_expertise", 0.5))
         + expertise_alpha * expertise
     )
-    mods["threshold"] = _clamp01(
+    mods["threshold"] = clamp_to_unit_interval(
         (1.0 - threshold_alpha) * float(mods.get("threshold", 0.3))
         + threshold_alpha * threshold_signal
     )
-    mods["topic_familiarity"] = _clamp01(
+    mods["topic_familiarity"] = clamp_to_unit_interval(
         (1.0 - familiarity_alpha) * float(mods.get("topic_familiarity", 0.5))
         + familiarity_alpha * familiarity_signal
     )
-    mods["failure_wariness"] = _clamp01(
+    mods["failure_wariness"] = clamp_to_unit_interval(
         (1.0 - failure_decay) * float(mods.get("failure_wariness", 0.1))
         + failure_alpha * failure_signal
     )
 
-    securing_target = _clamp01(
+    securing_target = clamp_to_unit_interval(
         0.50 * threshold_signal + 0.30 * failure_signal + 0.20 * ambiguity
     )
-    mods["securing"] = _clamp01(
+    mods["securing"] = clamp_to_unit_interval(
         (1.0 - securing_alpha) * float(mods.get("securing", 0.3))
         + securing_alpha * securing_target
     )
 
-    approach_target = _clamp01(
+    approach_target = clamp_to_unit_interval(
         0.45 * cx
         + 0.25 * (1.0 - ambiguity)
         + 0.20 * (1.0 - threshold_signal)
         + 0.10 * (1.0 - failure_signal)
     )
-    mods["approach"] = _clamp01(
+    mods["approach"] = clamp_to_unit_interval(
         (1.0 - approach_alpha) * float(mods.get("approach", 0.4))
         + approach_alpha * approach_target
     )
 
-    novelty_signal = _clamp01(
+    novelty_signal = clamp_to_unit_interval(
         0.35 * cx
         + 0.35 * (1.0 - familiarity_signal)
         + 0.20 * reflective_intent
         + 0.10 * ambiguity
     )
-    arousal_target = _clamp01(
+    arousal_target = clamp_to_unit_interval(
         0.25 + 0.40 * target_u + 0.35 * novelty_signal + 0.20 * cx
     )
-    mods["arousal"] = _clamp01(
+    mods["arousal"] = clamp_to_unit_interval(
         (1.0 - arousal_alpha) * float(mods.get("arousal", 0.4))
         + arousal_alpha * arousal_target
     )
 
-    risk_aversion_target = _clamp01(
+    risk_aversion_target = clamp_to_unit_interval(
         0.40 * threshold_signal
         + 0.30 * failure_signal
         + 0.20 * ambiguity
         + 0.10 * (1.0 if urgent_flag else 0.0)
     )
-    mods["risk_aversion"] = _clamp01(
+    mods["risk_aversion"] = clamp_to_unit_interval(
         (1.0 - risk_aversion_alpha) * float(mods.get("risk_aversion", 0.4))
         + risk_aversion_alpha * risk_aversion_target
     )
 
-    error_tolerance_target = _clamp01(
+    error_tolerance_target = clamp_to_unit_interval(
         0.45
         + 0.25 * (1.0 - threshold_signal)
         + 0.20 * familiarity_signal
@@ -608,12 +592,12 @@ def _appraise_modulators(context: dict, state: dict, mods: dict, params: dict) -
         - 0.20 * ambiguity
         - 0.10 * (1.0 if urgent_flag else 0.0)
     )
-    mods["error_tolerance"] = _clamp01(
+    mods["error_tolerance"] = clamp_to_unit_interval(
         (1.0 - error_tolerance_alpha) * float(mods.get("error_tolerance", 0.45))
         + error_tolerance_alpha * error_tolerance_target
     )
 
-    creativity_target = _clamp01(
+    creativity_target = clamp_to_unit_interval(
         0.30
         + 0.30 * (1.0 - familiarity_signal)
         + 0.20 * cx
@@ -621,13 +605,15 @@ def _appraise_modulators(context: dict, state: dict, mods: dict, params: dict) -
         + 0.20 * reflective_intent
         - 0.10 * failure_signal
     )
-    mods["creativity"] = _clamp01(
+    mods["creativity"] = clamp_to_unit_interval(
         (1.0 - creativity_alpha) * float(mods.get("creativity", 0.45))
         + creativity_alpha * creativity_target
     )
 
-    valence_target = _clamp11(valence_signal - 0.10 * failure_signal)
-    mods["valence"] = _clamp11(
+    valence_target = clamp_to_signed_unit_interval(
+        valence_signal - 0.10 * failure_signal
+    )
+    mods["valence"] = clamp_to_signed_unit_interval(
         (1.0 - valence_alpha) * float(mods.get("valence", 0.0))
         + valence_alpha * valence_target
     )
@@ -635,12 +621,14 @@ def _appraise_modulators(context: dict, state: dict, mods: dict, params: dict) -
     turn_count = int(state.get("turn_count", 0))
     if cold_start_horizon > 0.0 and turn_count < cold_start_horizon:
         cold_phase = (cold_start_horizon - float(turn_count)) / cold_start_horizon
-        cold_weight = _clamp01(cold_start_strength * cold_phase)
+        cold_weight = clamp_to_unit_interval(cold_start_strength * cold_phase)
     else:
         cold_weight = 0.0
 
     def _effective(smoothed: float, raw_signal: float) -> float:
-        return _clamp01((1.0 - cold_weight) * smoothed + cold_weight * raw_signal)
+        return clamp_to_unit_interval(
+            (1.0 - cold_weight) * smoothed + cold_weight * raw_signal
+        )
 
     return {
         "turn_count": turn_count,
@@ -672,7 +660,7 @@ def _appraise_modulators(context: dict, state: dict, mods: dict, params: dict) -
             float(mods["error_tolerance"]), error_tolerance_target
         ),
         "creativity": _effective(float(mods["creativity"]), creativity_target),
-        "valence": _clamp11(
+        "valence": clamp_to_signed_unit_interval(
             (1.0 - cold_weight) * float(mods.get("valence", 0.0))
             + cold_weight * valence_signal
         ),

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from engine_state import _clamp01
+from utils import clamp_to_unit_interval
 
 
 # Penalty functions
@@ -20,14 +20,14 @@ def _hallucination_penalty(action: str, cx: float, ambiguity: float) -> float:
         base += 0.10 * ambiguity
     elif action == "act_decompose":
         base += 0.10 * cx
-    return _clamp01(base)
+    return clamp_to_unit_interval(base)
 
 
 def _redundancy_penalty(
     action: str, cx: float, familiarity: float, urgency: float
 ) -> float:
     if action == "act_respond":
-        return _clamp01(
+        return clamp_to_unit_interval(
             0.45 + 0.25 * (1.0 - cx) + 0.15 * familiarity + 0.10 * (1.0 - urgency)
         )
     return {
@@ -44,7 +44,7 @@ def _premature_penalty(
     action: str, cx: float, ambiguity: float, threshold: float
 ) -> float:
     if action == "act_respond":
-        return _clamp01(0.40 + 0.35 * cx + 0.25 * ambiguity + 0.20 * threshold)
+        return clamp_to_unit_interval(0.40 + 0.35 * cx + 0.25 * ambiguity + 0.20 * threshold)
     return {
         "act_search": 0.20,
         "act_verify": 0.08,
@@ -57,11 +57,11 @@ def _premature_penalty(
 
 def _rabbit_hole_penalty(action: str, cx: float, ambiguity: float) -> float:
     if action == "act_think":
-        return _clamp01(0.36 + 0.16 * (1.0 - cx) + 0.14 * (1.0 - ambiguity))
+        return clamp_to_unit_interval(0.36 + 0.16 * (1.0 - cx) + 0.14 * (1.0 - ambiguity))
     if action == "act_decompose":
-        return _clamp01(0.48 + 0.18 * (1.0 - cx) + 0.18 * (1.0 - ambiguity))
+        return clamp_to_unit_interval(0.48 + 0.18 * (1.0 - cx) + 0.18 * (1.0 - ambiguity))
     if action == "act_search":
-        return _clamp01(0.35 + 0.15 * (1.0 - cx) + 0.15 * (1.0 - ambiguity))
+        return clamp_to_unit_interval(0.35 + 0.15 * (1.0 - cx) + 0.15 * (1.0 - ambiguity))
     return {
         "act_respond": 0.10,
         "act_verify": 0.18,
@@ -74,112 +74,112 @@ def _rabbit_hole_penalty(action: str, cx: float, ambiguity: float) -> float:
 ACTIONS = {
     "act_respond": {
         "efficiency": 1.00,
-        "accuracy": lambda cx: _clamp01(1.00 - 1.10 * cx),
-        "success_moderate": lambda cx: _clamp01(0.80 - 0.20 * cx),
-        "knowledge": lambda cx: _clamp01(0.28 + 0.18 * cx),
-        "novelty": lambda cx: _clamp01(0.18 + 0.10 * cx),
-        "success_breakthrough": lambda cx: _clamp01(0.18 + 0.12 * cx),
-        "coherence": lambda cx: _clamp01(0.72 - 0.10 * cx),
-        "originality": lambda cx: _clamp01(0.16 + 0.10 * cx),
-        "social": lambda cx: _clamp01(0.74 + 0.08 * (1.0 - cx)),
-        "help_short": lambda cx: _clamp01(0.95 - 0.20 * cx),
-        "help_long": lambda cx: _clamp01(0.25 + 0.20 * cx),
-        "over_beneficial": lambda cx: _clamp01(0.45 - 0.15 * cx),
-        "over_safety": lambda cx: _clamp01(0.45 - 0.20 * cx),
+        "accuracy": lambda cx: clamp_to_unit_interval(1.00 - 1.10 * cx),
+        "success_moderate": lambda cx: clamp_to_unit_interval(0.80 - 0.20 * cx),
+        "knowledge": lambda cx: clamp_to_unit_interval(0.28 + 0.18 * cx),
+        "novelty": lambda cx: clamp_to_unit_interval(0.18 + 0.10 * cx),
+        "success_breakthrough": lambda cx: clamp_to_unit_interval(0.18 + 0.12 * cx),
+        "coherence": lambda cx: clamp_to_unit_interval(0.72 - 0.10 * cx),
+        "originality": lambda cx: clamp_to_unit_interval(0.16 + 0.10 * cx),
+        "social": lambda cx: clamp_to_unit_interval(0.74 + 0.08 * (1.0 - cx)),
+        "help_short": lambda cx: clamp_to_unit_interval(0.95 - 0.20 * cx),
+        "help_long": lambda cx: clamp_to_unit_interval(0.25 + 0.20 * cx),
+        "over_beneficial": lambda cx: clamp_to_unit_interval(0.45 - 0.15 * cx),
+        "over_safety": lambda cx: clamp_to_unit_interval(0.45 - 0.20 * cx),
         "over_honesty": 0.60,
     },
     "act_clarify": {
         "efficiency": 0.65,
-        "accuracy": lambda cx: _clamp01(0.55 + 0.25 * cx),
+        "accuracy": lambda cx: clamp_to_unit_interval(0.55 + 0.25 * cx),
         "success_moderate": 0.72,
-        "knowledge": lambda cx: _clamp01(0.45 + 0.20 * cx),
-        "novelty": lambda cx: _clamp01(0.28 + 0.12 * cx),
-        "success_breakthrough": lambda cx: _clamp01(0.28 + 0.12 * cx),
+        "knowledge": lambda cx: clamp_to_unit_interval(0.45 + 0.20 * cx),
+        "novelty": lambda cx: clamp_to_unit_interval(0.28 + 0.12 * cx),
+        "success_breakthrough": lambda cx: clamp_to_unit_interval(0.28 + 0.12 * cx),
         "coherence": 0.82,
-        "originality": lambda cx: _clamp01(0.18 + 0.10 * cx),
+        "originality": lambda cx: clamp_to_unit_interval(0.18 + 0.10 * cx),
         "social": 0.95,
-        "help_short": lambda cx: _clamp01(0.55 + 0.10 * (1.0 - cx)),
-        "help_long": lambda cx: _clamp01(0.40 + 0.20 * cx),
+        "help_short": lambda cx: clamp_to_unit_interval(0.55 + 0.10 * (1.0 - cx)),
+        "help_long": lambda cx: clamp_to_unit_interval(0.40 + 0.20 * cx),
         "over_beneficial": 0.85,
         "over_safety": 0.90,
         "over_honesty": 0.95,
     },
     "act_search": {
         "efficiency": 0.25,
-        "accuracy": lambda cx: _clamp01(0.30 + 0.90 * cx),
-        "success_moderate": lambda cx: _clamp01(0.55 + 0.20 * cx),
-        "knowledge": lambda cx: _clamp01(0.68 + 0.22 * cx),
-        "novelty": lambda cx: _clamp01(0.58 + 0.18 * cx),
-        "success_breakthrough": lambda cx: _clamp01(0.45 + 0.18 * cx),
+        "accuracy": lambda cx: clamp_to_unit_interval(0.30 + 0.90 * cx),
+        "success_moderate": lambda cx: clamp_to_unit_interval(0.55 + 0.20 * cx),
+        "knowledge": lambda cx: clamp_to_unit_interval(0.68 + 0.22 * cx),
+        "novelty": lambda cx: clamp_to_unit_interval(0.58 + 0.18 * cx),
+        "success_breakthrough": lambda cx: clamp_to_unit_interval(0.45 + 0.18 * cx),
         "coherence": 0.58,
-        "originality": lambda cx: _clamp01(0.48 + 0.16 * cx),
-        "social": lambda cx: _clamp01(0.42 + 0.12 * (1.0 - cx)),
-        "help_short": lambda cx: _clamp01(0.35 + 0.10 * (1.0 - cx)),
-        "help_long": lambda cx: _clamp01(0.55 + 0.35 * cx),
+        "originality": lambda cx: clamp_to_unit_interval(0.48 + 0.16 * cx),
+        "social": lambda cx: clamp_to_unit_interval(0.42 + 0.12 * (1.0 - cx)),
+        "help_short": lambda cx: clamp_to_unit_interval(0.35 + 0.10 * (1.0 - cx)),
+        "help_long": lambda cx: clamp_to_unit_interval(0.55 + 0.35 * cx),
         "over_beneficial": 0.72,
         "over_safety": 0.78,
         "over_honesty": 0.82,
     },
     "act_verify": {
         "efficiency": 0.35,
-        "accuracy": lambda cx: _clamp01(0.75 + 0.20 * cx),
+        "accuracy": lambda cx: clamp_to_unit_interval(0.75 + 0.20 * cx),
         "success_moderate": 0.90,
-        "knowledge": lambda cx: _clamp01(0.62 + 0.15 * cx),
-        "novelty": lambda cx: _clamp01(0.25 + 0.08 * cx),
-        "success_breakthrough": lambda cx: _clamp01(0.38 + 0.10 * cx),
+        "knowledge": lambda cx: clamp_to_unit_interval(0.62 + 0.15 * cx),
+        "novelty": lambda cx: clamp_to_unit_interval(0.25 + 0.08 * cx),
+        "success_breakthrough": lambda cx: clamp_to_unit_interval(0.38 + 0.10 * cx),
         "coherence": 0.86,
-        "originality": lambda cx: _clamp01(0.24 + 0.08 * cx),
+        "originality": lambda cx: clamp_to_unit_interval(0.24 + 0.08 * cx),
         "social": 0.88,
-        "help_short": lambda cx: _clamp01(0.40 + 0.10 * (1.0 - cx)),
-        "help_long": lambda cx: _clamp01(0.50 + 0.20 * cx),
+        "help_short": lambda cx: clamp_to_unit_interval(0.40 + 0.10 * (1.0 - cx)),
+        "help_long": lambda cx: clamp_to_unit_interval(0.50 + 0.20 * cx),
         "over_beneficial": 0.96,
         "over_safety": 0.97,
         "over_honesty": 0.97,
     },
     "act_decompose": {
         "efficiency": 0.45,
-        "accuracy": lambda cx: _clamp01(0.55 + 0.35 * cx),
-        "success_moderate": lambda cx: _clamp01(0.65 + 0.15 * cx),
-        "knowledge": lambda cx: _clamp01(0.72 + 0.20 * cx),
-        "novelty": lambda cx: _clamp01(0.62 + 0.18 * cx),
-        "success_breakthrough": lambda cx: _clamp01(0.62 + 0.22 * cx),
+        "accuracy": lambda cx: clamp_to_unit_interval(0.55 + 0.35 * cx),
+        "success_moderate": lambda cx: clamp_to_unit_interval(0.65 + 0.15 * cx),
+        "knowledge": lambda cx: clamp_to_unit_interval(0.72 + 0.20 * cx),
+        "novelty": lambda cx: clamp_to_unit_interval(0.62 + 0.18 * cx),
+        "success_breakthrough": lambda cx: clamp_to_unit_interval(0.62 + 0.22 * cx),
         "coherence": 0.80,
-        "originality": lambda cx: _clamp01(0.66 + 0.18 * cx),
+        "originality": lambda cx: clamp_to_unit_interval(0.66 + 0.18 * cx),
         "social": 0.72,
-        "help_short": lambda cx: _clamp01(0.30 + 0.05 * (1.0 - cx)),
-        "help_long": lambda cx: _clamp01(0.70 + 0.25 * cx),
+        "help_short": lambda cx: clamp_to_unit_interval(0.30 + 0.05 * (1.0 - cx)),
+        "help_long": lambda cx: clamp_to_unit_interval(0.70 + 0.25 * cx),
         "over_beneficial": 0.70,
         "over_safety": 0.76,
         "over_honesty": 0.80,
     },
     "act_think": {
         "efficiency": 0.40,
-        "accuracy": lambda cx: _clamp01(0.60 + 0.25 * cx),
-        "success_moderate": lambda cx: _clamp01(0.45 + 0.20 * cx),
-        "knowledge": lambda cx: _clamp01(0.66 + 0.18 * cx),
-        "novelty": lambda cx: _clamp01(0.70 + 0.18 * cx),
-        "success_breakthrough": lambda cx: _clamp01(0.68 + 0.20 * cx),
+        "accuracy": lambda cx: clamp_to_unit_interval(0.60 + 0.25 * cx),
+        "success_moderate": lambda cx: clamp_to_unit_interval(0.45 + 0.20 * cx),
+        "knowledge": lambda cx: clamp_to_unit_interval(0.66 + 0.18 * cx),
+        "novelty": lambda cx: clamp_to_unit_interval(0.70 + 0.18 * cx),
+        "success_breakthrough": lambda cx: clamp_to_unit_interval(0.68 + 0.20 * cx),
         "coherence": 0.74,
-        "originality": lambda cx: _clamp01(0.74 + 0.16 * cx),
+        "originality": lambda cx: clamp_to_unit_interval(0.74 + 0.16 * cx),
         "social": 0.58,
-        "help_short": lambda cx: _clamp01(0.35 + 0.10 * (1.0 - cx)),
-        "help_long": lambda cx: _clamp01(0.60 + 0.25 * cx),
+        "help_short": lambda cx: clamp_to_unit_interval(0.35 + 0.10 * (1.0 - cx)),
+        "help_long": lambda cx: clamp_to_unit_interval(0.60 + 0.25 * cx),
         "over_beneficial": 0.78,
         "over_safety": 0.84,
         "over_honesty": 0.90,
     },
     "act_synthesize": {
         "efficiency": 0.30,
-        "accuracy": lambda cx: _clamp01(0.74 + 0.12 * cx),
+        "accuracy": lambda cx: clamp_to_unit_interval(0.74 + 0.12 * cx),
         "success_moderate": 0.82,
-        "knowledge": lambda cx: _clamp01(0.78 + 0.16 * cx),
-        "novelty": lambda cx: _clamp01(0.56 + 0.12 * cx),
-        "success_breakthrough": lambda cx: _clamp01(0.54 + 0.14 * cx),
+        "knowledge": lambda cx: clamp_to_unit_interval(0.78 + 0.16 * cx),
+        "novelty": lambda cx: clamp_to_unit_interval(0.56 + 0.12 * cx),
+        "success_breakthrough": lambda cx: clamp_to_unit_interval(0.54 + 0.14 * cx),
         "coherence": 0.84,
-        "originality": lambda cx: _clamp01(0.82 + 0.12 * cx),
+        "originality": lambda cx: clamp_to_unit_interval(0.82 + 0.12 * cx),
         "social": 0.68,
-        "help_short": lambda cx: _clamp01(0.42 + 0.08 * (1.0 - cx)),
-        "help_long": lambda cx: _clamp01(0.72 + 0.18 * cx),
+        "help_short": lambda cx: clamp_to_unit_interval(0.42 + 0.08 * (1.0 - cx)),
+        "help_long": lambda cx: clamp_to_unit_interval(0.72 + 0.18 * cx),
         "over_beneficial": 0.90,
         "over_safety": 0.92,
         "over_honesty": 0.95,
@@ -409,17 +409,17 @@ def _score_actions(
         )
 
         safety_risk = {
-            "act_respond": _clamp01(
+            "act_respond": clamp_to_unit_interval(
                 0.55 + 0.20 * cx + 0.25 * threshold + 0.20 * ambiguity
             ),
-            "act_search": _clamp01(0.35 + 0.20 * threshold),
+            "act_search": clamp_to_unit_interval(0.35 + 0.20 * threshold),
             "act_verify": 0.08,
             "act_clarify": 0.10,
             "act_decompose": 0.25,
             "act_synthesize": 0.12,
         }.get(action, 0.30)
         honesty_risk = {
-            "act_respond": _clamp01(0.40 + 0.30 * low_confidence + 0.15 * ambiguity),
+            "act_respond": clamp_to_unit_interval(0.40 + 0.30 * low_confidence + 0.15 * ambiguity),
             "act_search": 0.18,
             "act_verify": 0.05,
             "act_clarify": 0.10,
@@ -430,7 +430,7 @@ def _score_actions(
         score -= over_safety * safety_risk * (0.65 + 0.35 * securing)
         score -= over_honesty * honesty_risk * (0.60 + 0.40 * low_confidence)
         beneficial_risk = {
-            "act_respond": _clamp01(
+            "act_respond": clamp_to_unit_interval(
                 0.50 + 0.20 * cx + 0.20 * threshold + 0.20 * low_confidence
             ),
             "act_search": 0.22,

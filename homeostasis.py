@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from engine_state import _clamp01
+from utils import clamp_to_unit_interval
 
 
 # Homeostatic scope
@@ -129,9 +129,9 @@ def apply_homeostatic_contractivity(state: dict) -> dict:
     modulators = state.get("modulators", {})
     anti_goals = state.get("anti_goals", {})
 
-    theta_safe = _clamp01(float(params.get("homeostasis_theta_safe", 0.55)))
-    eta = _clamp01(float(params.get("homeostasis_eta", 0.05)))
-    alpha_near = _clamp01(float(params.get("homeostasis_alpha_near", 0.10)))
+    theta_safe = clamp_to_unit_interval(float(params.get("homeostasis_theta_safe", 0.55)))
+    eta = clamp_to_unit_interval(float(params.get("homeostasis_eta", 0.05)))
+    alpha_near = clamp_to_unit_interval(float(params.get("homeostasis_alpha_near", 0.10)))
 
     trigger_keys: list[str] = []
 
