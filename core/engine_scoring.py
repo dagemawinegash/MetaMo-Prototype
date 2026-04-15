@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from schemas import ScoringInputs
 from utils import clamp_to_unit_interval
 
 
@@ -206,52 +207,53 @@ def _action_reason(action: str) -> str:
 
 # Action scoring
 def _score_actions(
-    *,
-    cx: float,
-    ambiguity: float,
-    ux: float,
-    u: float,
-    res: float,
-    threshold: float,
-    threshold_signal: float,
-    familiarity: float,
-    familiarity_signal: float,
-    failure_wariness: float,
-    failure_signal: float,
-    securing: float,
-    approach: float,
-    arousal: float,
-    risk_aversion: float,
-    error_tolerance: float,
-    creativity: float,
-    valence: float,
-    low_confidence: float,
-    answerability: float,
-    needs_external_evidence: float,
-    needs_task_plan: float,
-    needs_multi_source_integration: float,
-    reflective_intent: float,
-    verify_request: bool,
-    anti_hall: float,
-    anti_redundant: float,
-    anti_rabbit_hole: float,
-    anti_premature: float,
-    coherence: float,
-    originality: float,
-    social: float,
-    help_short: float,
-    help_long: float,
-    over_beneficial: float,
-    over_safety: float,
-    over_honesty: float,
-    knowledge: float,
-    novelty: float,
-    success_breakthrough: float,
-    reflective_think_bonus: float,
-    reflective_search_penalty: float,
-    weights: dict,
+    inputs: ScoringInputs,
 ) -> dict[str, float]:
     """Score all actions using weighted relevance and anti-goal penalties."""
+    cx = float(inputs["cx"])
+    ambiguity = float(inputs["ambiguity"])
+    ux = float(inputs["ux"])
+    u = float(inputs["u"])
+    res = float(inputs["res"])
+    threshold = float(inputs["threshold"])
+    threshold_signal = float(inputs["threshold_signal"])
+    familiarity = float(inputs["familiarity"])
+    familiarity_signal = float(inputs["familiarity_signal"])
+    failure_wariness = float(inputs["failure_wariness"])
+    failure_signal = float(inputs["failure_signal"])
+    securing = float(inputs["securing"])
+    approach = float(inputs["approach"])
+    arousal = float(inputs["arousal"])
+    risk_aversion = float(inputs["risk_aversion"])
+    error_tolerance = float(inputs["error_tolerance"])
+    creativity = float(inputs["creativity"])
+    valence = float(inputs["valence"])
+    low_confidence = float(inputs["low_confidence"])
+    answerability = float(inputs["answerability"])
+    needs_external_evidence = float(inputs["needs_external_evidence"])
+    needs_task_plan = float(inputs["needs_task_plan"])
+    needs_multi_source_integration = float(inputs["needs_multi_source_integration"])
+    reflective_intent = float(inputs["reflective_intent"])
+    verify_request = bool(inputs["verify_request"])
+    anti_hall = float(inputs["anti_hall"])
+    anti_redundant = float(inputs["anti_redundant"])
+    anti_rabbit_hole = float(inputs["anti_rabbit_hole"])
+    anti_premature = float(inputs["anti_premature"])
+    coherence = float(inputs["coherence"])
+    originality = float(inputs["originality"])
+    social = float(inputs["social"])
+    help_short = float(inputs["help_short"])
+    help_long = float(inputs["help_long"])
+    over_beneficial = float(inputs["over_beneficial"])
+    over_safety = float(inputs["over_safety"])
+    over_honesty = float(inputs["over_honesty"])
+    knowledge = float(inputs["knowledge"])
+    novelty = float(inputs["novelty"])
+    success_breakthrough = float(inputs["success_breakthrough"])
+    reflective_think_bonus = float(inputs["reflective_think_bonus"])
+    reflective_search_penalty = float(inputs["reflective_search_penalty"])
+    weights = inputs["weights"]
+
     scores: dict[str, float] = {}
     for action, effects in ACTIONS.items():
         score = 0.0

@@ -1,8 +1,9 @@
 from __future__ import annotations
 
-from engine_routing import _apply_routing_guards, _select_action
-from engine_scoring import _action_reason, _score_actions
-from engine_state import (
+from core.engine_routing import _apply_routing_guards, _select_action
+from core.engine_scoring import _action_reason, _score_actions
+from schemas import RoutingInputs, ScoringInputs
+from core.engine_state import (
     DEFAULT_ANTI_GOALS,
     _anti_goal_targets,
     _appraise_modulators,
@@ -11,7 +12,7 @@ from engine_state import (
     _goal_weights,
     init_state,
 )
-from homeostasis import apply_homeostatic_contractivity
+from core.homeostasis import apply_homeostatic_contractivity
 from utils import clamp_to_unit_interval
 
 
@@ -144,74 +145,76 @@ def step(context: dict, state: dict) -> dict:
     over_safety = float(goals.get("over_safety", 0.65))
     over_honesty = float(goals.get("over_honesty", 0.65))
 
-    scores = _score_actions(
-        cx=cx,
-        ambiguity=ambiguity,
-        ux=ux,
-        u=u,
-        res=res,
-        threshold=threshold,
-        threshold_signal=threshold_signal,
-        familiarity=familiarity,
-        familiarity_signal=familiarity_signal,
-        failure_wariness=failure_wariness,
-        failure_signal=failure_signal,
-        securing=securing,
-        approach=approach,
-        arousal=arousal,
-        risk_aversion=risk_aversion,
-        error_tolerance=error_tolerance,
-        creativity=creativity,
-        valence=valence,
-        low_confidence=low_confidence,
-        answerability=answerability,
-        needs_external_evidence=needs_external_evidence,
-        needs_task_plan=needs_task_plan,
-        needs_multi_source_integration=needs_multi_source_integration,
-        reflective_intent=reflective_intent,
-        verify_request=verify_request,
-        anti_hall=anti_hall,
-        anti_redundant=anti_redundant,
-        anti_rabbit_hole=anti_rabbit_hole,
-        anti_premature=anti_premature,
-        coherence=coherence,
-        originality=originality,
-        social=social,
-        help_short=help_short,
-        help_long=help_long,
-        over_beneficial=over_beneficial,
-        over_safety=over_safety,
-        over_honesty=over_honesty,
-        knowledge=knowledge,
-        novelty=novelty,
-        success_breakthrough=success_breakthrough,
-        reflective_think_bonus=reflective_think_bonus,
-        reflective_search_penalty=reflective_search_penalty,
-        weights=weights,
-    )
-    scores = _apply_routing_guards(
-        scores,
-        cx=cx,
-        ambiguity=ambiguity,
-        threshold=threshold,
-        threshold_signal=threshold_signal,
-        familiarity_signal=familiarity_signal,
-        failure_signal=failure_signal,
-        urgent_flag=urgent_flag,
-        intent_type=intent_type,
-        verify_request=verify_request,
-        reflective_intent=reflective_intent,
-        needs_external_evidence=needs_external_evidence,
-        needs_task_plan=needs_task_plan,
-        needs_multi_source_integration=needs_multi_source_integration,
-        low_confidence=low_confidence,
-        failure_wariness=failure_wariness,
-        approach=approach,
-        help_short=help_short,
-        decompose_min_complexity=decompose_min_complexity,
-        decompose_urgent_min_complexity=decompose_urgent_min_complexity,
-        decompose_max_ambiguity=decompose_max_ambiguity,
-    )
+    scoring_inputs: ScoringInputs = {
+        "cx": cx,
+        "ambiguity": ambiguity,
+        "ux": ux,
+        "u": u,
+        "res": res,
+        "threshold": threshold,
+        "threshold_signal": threshold_signal,
+        "familiarity": familiarity,
+        "familiarity_signal": familiarity_signal,
+        "failure_wariness": failure_wariness,
+        "failure_signal": failure_signal,
+        "securing": securing,
+        "approach": approach,
+        "arousal": arousal,
+        "risk_aversion": risk_aversion,
+        "error_tolerance": error_tolerance,
+        "creativity": creativity,
+        "valence": valence,
+        "low_confidence": low_confidence,
+        "answerability": answerability,
+        "needs_external_evidence": needs_external_evidence,
+        "needs_task_plan": needs_task_plan,
+        "needs_multi_source_integration": needs_multi_source_integration,
+        "reflective_intent": reflective_intent,
+        "verify_request": verify_request,
+        "anti_hall": anti_hall,
+        "anti_redundant": anti_redundant,
+        "anti_rabbit_hole": anti_rabbit_hole,
+        "anti_premature": anti_premature,
+        "coherence": coherence,
+        "originality": originality,
+        "social": social,
+        "help_short": help_short,
+        "help_long": help_long,
+        "over_beneficial": over_beneficial,
+        "over_safety": over_safety,
+        "over_honesty": over_honesty,
+        "knowledge": knowledge,
+        "novelty": novelty,
+        "success_breakthrough": success_breakthrough,
+        "reflective_think_bonus": reflective_think_bonus,
+        "reflective_search_penalty": reflective_search_penalty,
+        "weights": weights,
+    }
+    scores = _score_actions(scoring_inputs)
+
+    routing_inputs: RoutingInputs = {
+        "cx": cx,
+        "ambiguity": ambiguity,
+        "threshold": threshold,
+        "threshold_signal": threshold_signal,
+        "familiarity_signal": familiarity_signal,
+        "failure_signal": failure_signal,
+        "urgent_flag": urgent_flag,
+        "intent_type": intent_type,
+        "verify_request": verify_request,
+        "reflective_intent": reflective_intent,
+        "needs_external_evidence": needs_external_evidence,
+        "needs_task_plan": needs_task_plan,
+        "needs_multi_source_integration": needs_multi_source_integration,
+        "low_confidence": low_confidence,
+        "failure_wariness": failure_wariness,
+        "approach": approach,
+        "help_short": help_short,
+        "decompose_min_complexity": decompose_min_complexity,
+        "decompose_urgent_min_complexity": decompose_urgent_min_complexity,
+        "decompose_max_ambiguity": decompose_max_ambiguity,
+    }
+    scores = _apply_routing_guards(scores, routing_inputs)
 
     best_action, top_scores = _select_action(
         scores,

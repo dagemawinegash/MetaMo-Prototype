@@ -1,34 +1,36 @@
 from __future__ import annotations
 
-from engine_state import ACTION_ACTIVE_FLOOR, ACTION_BLOCKED_SCORE
+from core.engine_state import ACTION_ACTIVE_FLOOR, ACTION_BLOCKED_SCORE
+from schemas import RoutingInputs
 
 
 # Routing guardrails
 def _apply_routing_guards(
     scores: dict[str, float],
-    *,
-    cx: float,
-    ambiguity: float,
-    threshold: float,
-    threshold_signal: float,
-    familiarity_signal: float,
-    failure_signal: float,
-    urgent_flag: bool,
-    intent_type: str,
-    verify_request: bool,
-    reflective_intent: float,
-    needs_external_evidence: float,
-    needs_task_plan: float,
-    needs_multi_source_integration: float,
-    low_confidence: float,
-    failure_wariness: float,
-    approach: float,
-    help_short: float,
-    decompose_min_complexity: float,
-    decompose_urgent_min_complexity: float,
-    decompose_max_ambiguity: float,
+    inputs: RoutingInputs,
 ) -> dict[str, float]:
     """Apply hard constraints and context routing arbitration on raw action scores."""
+    cx = float(inputs["cx"])
+    ambiguity = float(inputs["ambiguity"])
+    threshold = float(inputs["threshold"])
+    threshold_signal = float(inputs["threshold_signal"])
+    familiarity_signal = float(inputs["familiarity_signal"])
+    failure_signal = float(inputs["failure_signal"])
+    urgent_flag = bool(inputs["urgent_flag"])
+    intent_type = str(inputs["intent_type"])
+    verify_request = bool(inputs["verify_request"])
+    reflective_intent = float(inputs["reflective_intent"])
+    needs_external_evidence = float(inputs["needs_external_evidence"])
+    needs_task_plan = float(inputs["needs_task_plan"])
+    needs_multi_source_integration = float(inputs["needs_multi_source_integration"])
+    low_confidence = float(inputs["low_confidence"])
+    failure_wariness = float(inputs["failure_wariness"])
+    approach = float(inputs["approach"])
+    help_short = float(inputs["help_short"])
+    decompose_min_complexity = float(inputs["decompose_min_complexity"])
+    decompose_urgent_min_complexity = float(inputs["decompose_urgent_min_complexity"])
+    decompose_max_ambiguity = float(inputs["decompose_max_ambiguity"])
+
     decompose_min = (
         decompose_urgent_min_complexity if urgent_flag else decompose_min_complexity
     )

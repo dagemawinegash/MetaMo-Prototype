@@ -7,6 +7,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from schemas import LogTurnPayload
+
 
 CSV_FIELDS = [
     "run_id",
@@ -114,45 +116,44 @@ class RunLogger:
 
         return score_parts, " | ".join(score_parts)
 
-    def log_turn(
-        self,
-        *,
-        session_name: str,
-        turn: int,
-        query: str,
-        action: str,
-        style_modifier: str,
-        intent_type: str,
-        complexity: float,
-        ambiguity: float,
-        threshold: float,
-        arousal: float,
-        risk_aversion: float,
-        resolution: float,
-        topic_familiarity: float,
-        confidence: float,
-        low_confidence: float,
-        over_beneficial: float,
-        over_safety: float,
-        over_honesty: float,
-        hallucinate: float,
-        redundant: float,
-        rabbit_hole: float,
-        premature: float,
-        homeo_mode: str,
-        homeo_trigger_count: int,
-        homeo_trigger_keys: list[str],
-        context_memory_enabled: bool,
-        context_window_turns: int,
-        score_top3: Any,
-        score_top3_text: str,
-        answer: str,
-        context: dict[str, Any],
-        decision: dict[str, Any],
-        pre_update: dict[str, Any],
-        post_update: dict[str, Any],
-    ) -> None:
+    def log_turn(self, payload: LogTurnPayload) -> None:
         turn_timestamp = datetime.now().isoformat(timespec="seconds")
+        session_name = str(payload.get("session_name", ""))
+        turn = int(payload.get("turn", 0))
+        query = str(payload.get("query", ""))
+        action = str(payload.get("action", ""))
+        style_modifier = str(payload.get("style_modifier", ""))
+        intent_type = str(payload.get("intent_type", "mixed"))
+        complexity = float(payload.get("complexity", 0.0))
+        ambiguity = float(payload.get("ambiguity", 0.0))
+        threshold = float(payload.get("threshold", 0.0))
+        arousal = float(payload.get("arousal", 0.0))
+        risk_aversion = float(payload.get("risk_aversion", 0.0))
+        resolution = float(payload.get("resolution", 0.0))
+        topic_familiarity = float(payload.get("topic_familiarity", 0.0))
+        confidence = float(payload.get("confidence", 0.0))
+        low_confidence = float(payload.get("low_confidence", 0.0))
+        over_beneficial = float(payload.get("over_beneficial", 0.0))
+        over_safety = float(payload.get("over_safety", 0.0))
+        over_honesty = float(payload.get("over_honesty", 0.0))
+        hallucinate = float(payload.get("hallucinate", 0.0))
+        redundant = float(payload.get("redundant", 0.0))
+        rabbit_hole = float(payload.get("rabbit_hole", 0.0))
+        premature = float(payload.get("premature", 0.0))
+        homeo_mode = str(payload.get("homeo_mode", "disabled"))
+        homeo_trigger_count = int(payload.get("homeo_trigger_count", 0))
+        raw_trigger_keys = payload.get("homeo_trigger_keys", [])
+        homeo_trigger_keys = (
+            raw_trigger_keys if isinstance(raw_trigger_keys, list) else []
+        )
+        context_memory_enabled = bool(payload.get("context_memory_enabled", False))
+        context_window_turns = int(payload.get("context_window_turns", 0))
+        score_top3_text = str(payload.get("score_top3_text", ""))
+        answer = str(payload.get("answer", ""))
+        context = payload.get("context", {})
+        decision = payload.get("decision", {})
+        pre_update = payload.get("pre_update", {})
+        post_update = payload.get("post_update", {})
 
         turn_record = {
             "run_id": self.run_id,

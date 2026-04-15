@@ -7,10 +7,10 @@ from typing import Any, TypedDict, Literal
 from dotenv import load_dotenv
 from utils import resolve_provider_and_model_name
 
-from engine import init_state as init_engine_state
-from engine import post_update as engine_post_update
-from engine import step as engine_step
-from parser import parse_context
+from core.engine import init_state as init_engine_state
+from core.engine import post_update as engine_post_update
+from core.engine import step as engine_step
+from pipeline.parser import parse_context
 
 
 Action = Literal[
