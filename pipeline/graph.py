@@ -5,6 +5,7 @@ import importlib
 from typing import Any, TypedDict, Literal
 
 from dotenv import load_dotenv
+from pipeline.llm_client import build_chat_llm
 from utils import resolve_provider_and_model_name
 
 from core.engine import init_state as init_engine_state
@@ -47,9 +48,8 @@ def _llm() -> Any:
         api_key = os.getenv("OPENAI_API_KEY")
         if not api_key:
             raise RuntimeError("OPENAI_API_KEY is missing (check .env)")
-        openai_mod = importlib.import_module("langchain_openai")
-        ChatOpenAI = getattr(openai_mod, "ChatOpenAI")
-        return ChatOpenAI(
+        return build_chat_llm(
+            provider_name="openai",
             model=model_name,
             temperature=0.3,
             api_key=api_key,
@@ -58,14 +58,11 @@ def _llm() -> Any:
     api_key = os.getenv("GEMINI_API_KEY")
     if not api_key:
         raise RuntimeError("GEMINI_API_KEY is missing (check .env)")
-
-    genai_mod = importlib.import_module("langchain_google_genai")
-    ChatGoogleGenerativeAI = getattr(genai_mod, "ChatGoogleGenerativeAI")
-
-    return ChatGoogleGenerativeAI(
+    return build_chat_llm(
+        provider_name="gemini",
         model=model_name,
         temperature=0.3,
-        google_api_key=api_key,
+        api_key=api_key,
     )
 
 
@@ -137,6 +134,7 @@ def _history_block(state: GraphState) -> str:
 def node_context_parser(state: GraphState) -> GraphState:
     query = state["query"]
     history_turns = _recent_history(state)
+    load_dotenv()
     provider_name, model_name = resolve_provider_and_model_name()
 
     ctx = parse_context(

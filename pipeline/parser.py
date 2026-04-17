@@ -9,6 +9,7 @@ from typing import Any
 
 from config import get_context_parser_system_prompt
 from dotenv import load_dotenv
+from pipeline.llm_client import build_chat_llm
 from utils import (
     clamp_to_signed_unit_interval,
     clamp_to_unit_interval,
@@ -212,14 +213,12 @@ def _parse_with_provider(
         HumanMessage = getattr(messages_mod, "HumanMessage")
         SystemMessage = getattr(messages_mod, "SystemMessage")
 
-        if provider_name == "openai":
-            provider_mod = importlib.import_module("langchain_openai")
-            ChatModel = getattr(provider_mod, "ChatOpenAI")
-            llm = ChatModel(model=model, temperature=0, api_key=api_key)
-        else:
-            provider_mod = importlib.import_module("langchain_google_genai")
-            ChatModel = getattr(provider_mod, "ChatGoogleGenerativeAI")
-            llm = ChatModel(model=model, temperature=0, google_api_key=api_key)
+        llm = build_chat_llm(
+            provider_name=provider_name,
+            model=model,
+            temperature=0,
+            api_key=api_key,
+        )
 
         user_input = _build_context_input(query, history_turns)
         system_prompt = get_context_parser_system_prompt()

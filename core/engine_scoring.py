@@ -206,243 +206,298 @@ def _action_reason(action: str) -> str:
 
 
 # Action scoring
+def _extract_scoring_context(inputs: ScoringInputs) -> dict:
+    return {
+        "cx": float(inputs["cx"]),
+        "ambiguity": float(inputs["ambiguity"]),
+        "ux": float(inputs["ux"]),
+        "u": float(inputs["u"]),
+        "res": float(inputs["res"]),
+        "threshold": float(inputs["threshold"]),
+        "threshold_signal": float(inputs["threshold_signal"]),
+        "familiarity": float(inputs["familiarity"]),
+        "familiarity_signal": float(inputs["familiarity_signal"]),
+        "failure_wariness": float(inputs["failure_wariness"]),
+        "failure_signal": float(inputs["failure_signal"]),
+        "securing": float(inputs["securing"]),
+        "approach": float(inputs["approach"]),
+        "arousal": float(inputs["arousal"]),
+        "risk_aversion": float(inputs["risk_aversion"]),
+        "error_tolerance": float(inputs["error_tolerance"]),
+        "creativity": float(inputs["creativity"]),
+        "valence": float(inputs["valence"]),
+        "low_confidence": float(inputs["low_confidence"]),
+        "answerability": float(inputs["answerability"]),
+        "needs_external_evidence": float(inputs["needs_external_evidence"]),
+        "needs_task_plan": float(inputs["needs_task_plan"]),
+        "needs_multi_source_integration": float(inputs["needs_multi_source_integration"]),
+        "reflective_intent": float(inputs["reflective_intent"]),
+        "verify_request": bool(inputs["verify_request"]),
+        "anti_hall": float(inputs["anti_hall"]),
+        "anti_redundant": float(inputs["anti_redundant"]),
+        "anti_rabbit_hole": float(inputs["anti_rabbit_hole"]),
+        "anti_premature": float(inputs["anti_premature"]),
+        "coherence": float(inputs["coherence"]),
+        "originality": float(inputs["originality"]),
+        "social": float(inputs["social"]),
+        "help_short": float(inputs["help_short"]),
+        "help_long": float(inputs["help_long"]),
+        "over_beneficial": float(inputs["over_beneficial"]),
+        "over_safety": float(inputs["over_safety"]),
+        "over_honesty": float(inputs["over_honesty"]),
+        "knowledge": float(inputs["knowledge"]),
+        "novelty": float(inputs["novelty"]),
+        "success_breakthrough": float(inputs["success_breakthrough"]),
+        "reflective_think_bonus": float(inputs["reflective_think_bonus"]),
+        "reflective_search_penalty": float(inputs["reflective_search_penalty"]),
+        "weights": inputs["weights"],
+    }
+
+
+def _weighted_relevance_score(action: str, cx: float, weights: dict) -> float:
+    score = 0.0
+    effects = ACTIONS[action]
+    for goal, weight in weights.items():
+        effect = effects.get(goal)
+        if effect is None:
+            continue
+        rel = effect(cx) if callable(effect) else float(effect)
+        score += float(weight) * float(rel)
+    return score
+
+
+def _adjust_clarify(score: float, v: dict) -> float:
+    score += 0.90 * v["ambiguity"] - 0.35 * v["ux"] - 0.15 * v["u"] + 0.20 * v["threshold"]
+    score += 0.20 * v["securing"]
+    score += 0.10 * v["coherence"] - 0.08 * v["valence"]
+    score += 0.22 * v["social"] - 0.06 * v["originality"]
+    score += 0.08 * (1.0 - v["error_tolerance"])
+    score -= 0.55 * v["answerability"]
+    score -= 0.20 * v["help_short"]
+    score -= 0.15 * v["anti_redundant"]
+    if v["ambiguity"] > 0.75 and (v["threshold_signal"] > 0.55 or v["low_confidence"] > 0.45):
+        score += 0.18
+    return score
+
+
+def _adjust_respond(score: float, v: dict) -> float:
+    score += 0.35 * v["u"] + 0.25 * (1.0 - v["ambiguity"]) + 0.15 * v["ux"] - 0.20 * v["cx"]
+    score += 0.20 * v["familiarity"] - 0.35 * v["threshold"] - 0.30 * v["failure_wariness"]
+    score -= 0.35 * v["securing"] + 0.20 * v["low_confidence"]
+    score += 0.10 * (1.0 - v["arousal"])
+    score += 0.12 * v["coherence"] + 0.10 * v["valence"]
+    score += 0.14 * v["social"] - 0.06 * v["originality"]
+    score -= 0.18 * v["risk_aversion"]
+    score += 0.30 * v["help_short"] - 0.15 * v["help_long"]
+    score += 0.45 * v["answerability"]
+    score += 0.22 * v["error_tolerance"]
+    score += 0.16 * v["help_short"]
+    score += 0.12 * v["anti_redundant"]
+    if v["cx"] >= 0.50:
+        score -= 0.08 * v["knowledge"] + 0.10 * v["success_breakthrough"]
+    return score
+
+
+def _adjust_search(score: float, v: dict) -> float:
+    score += 0.35 * v["cx"] + 0.20 * v["res"] - 0.15 * v["u"]
+    score += 0.35 * v["threshold"] + 0.35 * (1.0 - v["familiarity"]) + 0.30 * v["failure_wariness"]
+    score += 0.15 * v["securing"]
+    score += 0.08 * v["arousal"]
+    score += 0.06 * v["coherence"] + 0.02 * v["valence"]
+    score += 0.10 * v["originality"] + 0.06 * v["social"]
+    score += 0.08 * (1.0 - v["risk_aversion"])
+    score += 0.10 * (1.0 - v["error_tolerance"])
+    score += 0.10 * v["creativity"]
+    score += 0.06 * v["help_long"] - 0.08 * v["help_short"]
+    score += 0.14 * v["knowledge"] + 0.12 * v["novelty"] + 0.08 * v["success_breakthrough"]
+    score += 0.50 * v["needs_external_evidence"]
+    score += 0.12 * v["needs_multi_source_integration"]
+    score -= 0.08 * v["needs_task_plan"]
+    score -= v["reflective_search_penalty"] * v["reflective_intent"]
+    return score
+
+
+def _adjust_verify(score: float, v: dict) -> float:
+    score += 0.65 * v["threshold"] + 0.75 * v["low_confidence"] + 0.35 * v["failure_wariness"]
+    score += 0.15 * v["cx"] - 0.20 * v["u"] - 0.10 * v["ambiguity"]
+    score += 0.30 * v["securing"]
+    score += 0.14 * v["coherence"] - 0.14 * v["valence"]
+    score += 0.10 * v["social"] - 0.08 * v["originality"]
+    score += 0.25 * v["risk_aversion"]
+    score -= 0.08 * v["arousal"]
+    score += 0.55 * (1.0 - v["error_tolerance"])
+    score += 0.08 * (1.0 - v["creativity"])
+    score += 0.08 * v["help_long"] - 0.10 * v["help_short"]
+    score += 0.32 * (1.0 if v["verify_request"] else 0.0)
+    score += 0.05 * v["knowledge"]
+    return score
+
+
+def _adjust_decompose(score: float, v: dict) -> float:
+    score += 0.30 * v["cx"] + 0.30 * v["res"] + 0.10 * (1.0 - v["ambiguity"]) - 0.12 * v["u"]
+    score -= 0.28 * v["ambiguity"]
+    if v["cx"] >= 0.60 and v["ambiguity"] <= 0.60:
+        score += 0.10
+    if v["cx"] < 0.35:
+        score -= 0.35
+    score += 0.10 * v["approach"]
+    score += 0.10 * v["arousal"]
+    score += 0.10 * v["coherence"] + 0.04 * v["valence"]
+    score += 0.12 * v["originality"] + 0.08 * v["social"]
+    score += 0.08 * v["creativity"]
+    score -= 0.08 * (1.0 - v["error_tolerance"])
+    score += 0.12 * v["help_long"] - 0.12 * v["help_short"]
+    score += 0.08 * v["knowledge"] + 0.06 * v["novelty"] + 0.10 * v["success_breakthrough"]
+    score += 0.24 * v["needs_task_plan"]
+    score -= 0.12 * v["needs_external_evidence"]
+    score += 0.02 * v["needs_multi_source_integration"]
+    return score
+
+
+def _adjust_think(score: float, v: dict) -> float:
+    score += 0.35 * v["cx"] + 0.25 * v["ambiguity"] + 0.35 * v["approach"]
+    score += 0.10 * v["low_confidence"] + 0.10 * (1.0 - v["u"])
+    score -= 0.10 * v["threshold"]
+    score += 0.20 * v["arousal"]
+    score += 0.08 * v["coherence"] + 0.02 * v["valence"]
+    score += 0.14 * v["originality"] + 0.04 * v["social"]
+    score += 0.10 * (1.0 - v["risk_aversion"])
+    score += 0.26 * v["creativity"]
+    score -= 0.14 * (1.0 - v["error_tolerance"])
+    score += 0.10 * v["help_long"] - 0.08 * v["help_short"]
+    score += 0.10 * v["knowledge"] + 0.12 * v["novelty"] + 0.16 * v["success_breakthrough"]
+    score += v["reflective_think_bonus"] * v["reflective_intent"]
+    score -= 0.30 * v["anti_redundant"] * (0.70 + 0.30 * v["familiarity"])
+    score -= 0.16 * v["answerability"]
+    if v["cx"] >= 0.70 and v["approach"] >= 0.62 and (v["ambiguity"] >= 0.25 or v["low_confidence"] >= 0.30):
+        score += 0.07
+    elif v["cx"] >= 0.65 and v["approach"] >= 0.58 and (v["ambiguity"] >= 0.22 or v["low_confidence"] >= 0.28):
+        score += 0.03
+    return score
+
+
+def _adjust_synthesize(score: float, v: dict) -> float:
+    score += 0.24 * v["cx"] + 0.12 * v["res"] - 0.10 * v["u"]
+    score += 0.16 * (1.0 - v["ambiguity"]) + 0.14 * (1.0 - v["familiarity"])
+    score += 0.12 * v["approach"] + 0.08 * v["arousal"] + 0.16 * v["creativity"]
+    score += 0.16 * v["coherence"] + 0.08 * v["valence"]
+    score += 0.22 * v["originality"] + 0.10 * v["social"]
+    score += 0.06 * (1.0 - v["low_confidence"])
+    score += 0.12 * v["knowledge"] + 0.08 * v["novelty"] + 0.10 * v["success_breakthrough"]
+    score += 0.14 * v["help_long"] - 0.10 * v["help_short"]
+    score -= 0.12 * v["risk_aversion"]
+    score -= 0.18 * v["threshold"]
+    score -= 0.16 * v["failure_wariness"]
+    score += 0.55 * v["needs_multi_source_integration"]
+    score -= 0.12 * v["needs_external_evidence"]
+    score -= 0.18 * v["needs_task_plan"]
+    if v["cx"] >= 0.55 and v["ambiguity"] <= 0.60:
+        score += 0.16
+    if v["ambiguity"] >= 0.80:
+        score -= 0.28
+    if v["verify_request"]:
+        score -= 0.25
+    return score
+
+
+def _apply_action_adjustments(action: str, score: float, v: dict) -> float:
+    if action == "act_clarify":
+        return _adjust_clarify(score, v)
+    if action == "act_respond":
+        return _adjust_respond(score, v)
+    if action == "act_search":
+        return _adjust_search(score, v)
+    if action == "act_verify":
+        return _adjust_verify(score, v)
+    if action == "act_decompose":
+        return _adjust_decompose(score, v)
+    if action == "act_think":
+        return _adjust_think(score, v)
+    if action == "act_synthesize":
+        return _adjust_synthesize(score, v)
+    return score
+
+
+def _safety_risk(action: str, v: dict) -> float:
+    return {
+        "act_respond": clamp_to_unit_interval(
+            0.55 + 0.20 * v["cx"] + 0.25 * v["threshold"] + 0.20 * v["ambiguity"]
+        ),
+        "act_search": clamp_to_unit_interval(0.35 + 0.20 * v["threshold"]),
+        "act_verify": 0.08,
+        "act_clarify": 0.10,
+        "act_decompose": 0.25,
+        "act_synthesize": 0.12,
+    }.get(action, 0.30)
+
+
+def _honesty_risk(action: str, v: dict) -> float:
+    return {
+        "act_respond": clamp_to_unit_interval(
+            0.40 + 0.30 * v["low_confidence"] + 0.15 * v["ambiguity"]
+        ),
+        "act_search": 0.18,
+        "act_verify": 0.05,
+        "act_clarify": 0.10,
+        "act_decompose": 0.16,
+        "act_synthesize": 0.08,
+    }.get(action, 0.20)
+
+
+def _beneficial_risk(action: str, v: dict) -> float:
+    return {
+        "act_respond": clamp_to_unit_interval(
+            0.50 + 0.20 * v["cx"] + 0.20 * v["threshold"] + 0.20 * v["low_confidence"]
+        ),
+        "act_search": 0.22,
+        "act_verify": 0.06,
+        "act_clarify": 0.10,
+        "act_decompose": 0.18,
+        "act_synthesize": 0.10,
+    }.get(action, 0.20)
+
+
+def _apply_penalties_and_overgoals(action: str, score: float, v: dict) -> float:
+    score -= v["anti_hall"] * _hallucination_penalty(action, cx=v["cx"], ambiguity=v["ambiguity"])
+    score -= (
+        v["anti_redundant"]
+        * _redundancy_penalty(action, cx=v["cx"], familiarity=v["familiarity"], urgency=v["u"])
+        * (0.70 + 0.30 * (1.0 - v["u"]))
+    )
+    score -= (
+        v["anti_premature"]
+        * _premature_penalty(action, cx=v["cx"], ambiguity=v["ambiguity"], threshold=v["threshold"])
+        * (0.60 + 0.40 * v["threshold"])
+    )
+
+    rabbit_hole_scale = 0.40 + 0.22 * v["help_short"]
+    if action == "act_decompose":
+        rabbit_hole_scale *= 1.0 - 0.35 * v["needs_task_plan"]
+    score -= (
+        v["anti_rabbit_hole"]
+        * _rabbit_hole_penalty(action, cx=v["cx"], ambiguity=v["ambiguity"])
+        * rabbit_hole_scale
+    )
+
+    safety_risk = _safety_risk(action, v)
+    honesty_risk = _honesty_risk(action, v)
+    beneficial_risk = _beneficial_risk(action, v)
+    score -= v["over_safety"] * safety_risk * (0.65 + 0.35 * v["securing"])
+    score -= v["over_honesty"] * honesty_risk * (0.60 + 0.40 * v["low_confidence"])
+    score -= v["over_beneficial"] * beneficial_risk * (0.60 + 0.40 * v["securing"])
+    return score
+
+
 def _score_actions(
     inputs: ScoringInputs,
 ) -> dict[str, float]:
     """Score all actions using weighted relevance and anti-goal penalties."""
-    cx = float(inputs["cx"])
-    ambiguity = float(inputs["ambiguity"])
-    ux = float(inputs["ux"])
-    u = float(inputs["u"])
-    res = float(inputs["res"])
-    threshold = float(inputs["threshold"])
-    threshold_signal = float(inputs["threshold_signal"])
-    familiarity = float(inputs["familiarity"])
-    familiarity_signal = float(inputs["familiarity_signal"])
-    failure_wariness = float(inputs["failure_wariness"])
-    failure_signal = float(inputs["failure_signal"])
-    securing = float(inputs["securing"])
-    approach = float(inputs["approach"])
-    arousal = float(inputs["arousal"])
-    risk_aversion = float(inputs["risk_aversion"])
-    error_tolerance = float(inputs["error_tolerance"])
-    creativity = float(inputs["creativity"])
-    valence = float(inputs["valence"])
-    low_confidence = float(inputs["low_confidence"])
-    answerability = float(inputs["answerability"])
-    needs_external_evidence = float(inputs["needs_external_evidence"])
-    needs_task_plan = float(inputs["needs_task_plan"])
-    needs_multi_source_integration = float(inputs["needs_multi_source_integration"])
-    reflective_intent = float(inputs["reflective_intent"])
-    verify_request = bool(inputs["verify_request"])
-    anti_hall = float(inputs["anti_hall"])
-    anti_redundant = float(inputs["anti_redundant"])
-    anti_rabbit_hole = float(inputs["anti_rabbit_hole"])
-    anti_premature = float(inputs["anti_premature"])
-    coherence = float(inputs["coherence"])
-    originality = float(inputs["originality"])
-    social = float(inputs["social"])
-    help_short = float(inputs["help_short"])
-    help_long = float(inputs["help_long"])
-    over_beneficial = float(inputs["over_beneficial"])
-    over_safety = float(inputs["over_safety"])
-    over_honesty = float(inputs["over_honesty"])
-    knowledge = float(inputs["knowledge"])
-    novelty = float(inputs["novelty"])
-    success_breakthrough = float(inputs["success_breakthrough"])
-    reflective_think_bonus = float(inputs["reflective_think_bonus"])
-    reflective_search_penalty = float(inputs["reflective_search_penalty"])
-    weights = inputs["weights"]
-
+    v = _extract_scoring_context(inputs)
     scores: dict[str, float] = {}
-    for action, effects in ACTIONS.items():
-        score = 0.0
-        for goal, weight in weights.items():
-            effect = effects.get(goal)
-            if effect is None:
-                continue
-            rel = effect(cx) if callable(effect) else float(effect)
-            score += float(weight) * float(rel)
-
-        if action == "act_clarify":
-            score += 0.90 * ambiguity - 0.35 * ux - 0.15 * u + 0.20 * threshold
-            score += 0.20 * securing
-            score += 0.10 * coherence - 0.08 * valence
-            score += 0.22 * social - 0.06 * originality
-            score += 0.08 * (1.0 - error_tolerance)
-            score -= 0.55 * answerability
-            score -= 0.20 * help_short
-            score -= 0.15 * anti_redundant
-            if ambiguity > 0.75 and (threshold_signal > 0.55 or low_confidence > 0.45):
-                score += 0.18
-        elif action == "act_respond":
-            score += 0.35 * u + 0.25 * (1.0 - ambiguity) + 0.15 * ux - 0.20 * cx
-            score += 0.20 * familiarity - 0.35 * threshold - 0.30 * failure_wariness
-            score -= 0.35 * securing + 0.20 * low_confidence
-            score += 0.10 * (1.0 - arousal)
-            score += 0.12 * coherence + 0.10 * valence
-            score += 0.14 * social - 0.06 * originality
-            score -= 0.18 * risk_aversion
-            score += 0.30 * help_short - 0.15 * help_long
-            score += 0.45 * answerability
-            score += 0.22 * error_tolerance
-            score += 0.16 * help_short
-            score += 0.12 * anti_redundant
-            if cx >= 0.50:
-                score -= 0.08 * knowledge + 0.10 * success_breakthrough
-        elif action == "act_search":
-            score += 0.35 * cx + 0.20 * res - 0.15 * u
-            score += (
-                0.35 * threshold + 0.35 * (1.0 - familiarity) + 0.30 * failure_wariness
-            )
-            score += 0.15 * securing
-            score += 0.08 * arousal
-            score += 0.06 * coherence + 0.02 * valence
-            score += 0.10 * originality + 0.06 * social
-            score += 0.08 * (1.0 - risk_aversion)
-            score += 0.10 * (1.0 - error_tolerance)
-            score += 0.10 * creativity
-            score += 0.06 * help_long - 0.08 * help_short
-            score += 0.14 * knowledge + 0.12 * novelty + 0.08 * success_breakthrough
-            score += 0.50 * needs_external_evidence
-            score += 0.12 * needs_multi_source_integration
-            score -= 0.08 * needs_task_plan
-            score -= reflective_search_penalty * reflective_intent
-        elif action == "act_verify":
-            score += 0.65 * threshold + 0.75 * low_confidence + 0.35 * failure_wariness
-            score += 0.15 * cx - 0.20 * u - 0.10 * ambiguity
-            score += 0.30 * securing
-            score += 0.14 * coherence - 0.14 * valence
-            score += 0.10 * social - 0.08 * originality
-            score += 0.25 * risk_aversion
-            score -= 0.08 * arousal
-            score += 0.55 * (1.0 - error_tolerance)
-            score += 0.08 * (1.0 - creativity)
-            score += 0.08 * help_long - 0.10 * help_short
-            score += 0.32 * (1.0 if verify_request else 0.0)
-            score += 0.05 * knowledge
-        elif action == "act_decompose":
-            score += 0.30 * cx + 0.30 * res + 0.10 * (1.0 - ambiguity) - 0.12 * u
-            score -= 0.28 * ambiguity
-            if cx >= 0.60 and ambiguity <= 0.60:
-                score += 0.10
-            if cx < 0.35:
-                score -= 0.35
-            score += 0.10 * approach
-            score += 0.10 * arousal
-            score += 0.10 * coherence + 0.04 * valence
-            score += 0.12 * originality + 0.08 * social
-            score += 0.08 * creativity
-            score -= 0.08 * (1.0 - error_tolerance)
-            score += 0.12 * help_long - 0.12 * help_short
-            score += 0.08 * knowledge + 0.06 * novelty + 0.10 * success_breakthrough
-            score += 0.24 * needs_task_plan
-            score -= 0.12 * needs_external_evidence
-            score += 0.02 * needs_multi_source_integration
-        elif action == "act_think":
-            score += 0.35 * cx + 0.25 * ambiguity + 0.35 * approach
-            score += 0.10 * low_confidence + 0.10 * (1.0 - u)
-            score -= 0.10 * threshold
-            score += 0.20 * arousal
-            score += 0.08 * coherence + 0.02 * valence
-            score += 0.14 * originality + 0.04 * social
-            score += 0.10 * (1.0 - risk_aversion)
-            score += 0.26 * creativity
-            score -= 0.14 * (1.0 - error_tolerance)
-            score += 0.10 * help_long - 0.08 * help_short
-            score += 0.10 * knowledge + 0.12 * novelty + 0.16 * success_breakthrough
-            score += reflective_think_bonus * reflective_intent
-            score -= 0.30 * anti_redundant * (0.70 + 0.30 * familiarity)
-            score -= 0.16 * answerability
-            if (
-                cx >= 0.70
-                and approach >= 0.62
-                and (ambiguity >= 0.25 or low_confidence >= 0.30)
-            ):
-                score += 0.07
-            elif (
-                cx >= 0.65
-                and approach >= 0.58
-                and (ambiguity >= 0.22 or low_confidence >= 0.28)
-            ):
-                score += 0.03
-        elif action == "act_synthesize":
-            score += 0.24 * cx + 0.12 * res - 0.10 * u
-            score += 0.16 * (1.0 - ambiguity) + 0.14 * (1.0 - familiarity)
-            score += 0.12 * approach + 0.08 * arousal + 0.16 * creativity
-            score += 0.16 * coherence + 0.08 * valence
-            score += 0.22 * originality + 0.10 * social
-            score += 0.06 * (1.0 - low_confidence)
-            score += 0.12 * knowledge + 0.08 * novelty + 0.10 * success_breakthrough
-            score += 0.14 * help_long - 0.10 * help_short
-            score -= 0.12 * risk_aversion
-            score -= 0.18 * threshold
-            score -= 0.16 * failure_wariness
-            score += 0.55 * needs_multi_source_integration
-            score -= 0.12 * needs_external_evidence
-            score -= 0.18 * needs_task_plan
-            if cx >= 0.55 and ambiguity <= 0.60:
-                score += 0.16
-            if ambiguity >= 0.80:
-                score -= 0.28
-            if verify_request:
-                score -= 0.25
-
-        score -= anti_hall * _hallucination_penalty(action, cx=cx, ambiguity=ambiguity)
-        score -= (
-            anti_redundant
-            * _redundancy_penalty(action, cx=cx, familiarity=familiarity, urgency=u)
-            * (0.70 + 0.30 * (1.0 - u))
-        )
-        score -= (
-            anti_premature
-            * _premature_penalty(
-                action, cx=cx, ambiguity=ambiguity, threshold=threshold
-            )
-            * (0.60 + 0.40 * threshold)
-        )
-        rabbit_hole_scale = 0.40 + 0.22 * help_short
-        if action == "act_decompose":
-            rabbit_hole_scale *= 1.0 - 0.35 * needs_task_plan
-        score -= (
-            anti_rabbit_hole
-            * _rabbit_hole_penalty(action, cx=cx, ambiguity=ambiguity)
-            * rabbit_hole_scale
-        )
-
-        safety_risk = {
-            "act_respond": clamp_to_unit_interval(
-                0.55 + 0.20 * cx + 0.25 * threshold + 0.20 * ambiguity
-            ),
-            "act_search": clamp_to_unit_interval(0.35 + 0.20 * threshold),
-            "act_verify": 0.08,
-            "act_clarify": 0.10,
-            "act_decompose": 0.25,
-            "act_synthesize": 0.12,
-        }.get(action, 0.30)
-        honesty_risk = {
-            "act_respond": clamp_to_unit_interval(0.40 + 0.30 * low_confidence + 0.15 * ambiguity),
-            "act_search": 0.18,
-            "act_verify": 0.05,
-            "act_clarify": 0.10,
-            "act_decompose": 0.16,
-            "act_synthesize": 0.08,
-        }.get(action, 0.20)
-
-        score -= over_safety * safety_risk * (0.65 + 0.35 * securing)
-        score -= over_honesty * honesty_risk * (0.60 + 0.40 * low_confidence)
-        beneficial_risk = {
-            "act_respond": clamp_to_unit_interval(
-                0.50 + 0.20 * cx + 0.20 * threshold + 0.20 * low_confidence
-            ),
-            "act_search": 0.22,
-            "act_verify": 0.06,
-            "act_clarify": 0.10,
-            "act_decompose": 0.18,
-            "act_synthesize": 0.10,
-        }.get(action, 0.20)
-        score -= over_beneficial * beneficial_risk * (0.60 + 0.40 * securing)
-
+    for action in ACTIONS:
+        score = _weighted_relevance_score(action, v["cx"], v["weights"])
+        score = _apply_action_adjustments(action, score, v)
+        score = _apply_penalties_and_overgoals(action, score, v)
         scores[action] = score
 
     return scores
