@@ -7,6 +7,7 @@ from typing import Any, TypedDict, Literal
 from dotenv import load_dotenv
 from pipeline.llm_client import build_chat_llm
 from utils import resolve_provider_and_model_name
+from config import get_action_system_prompt
 
 from core.engine import init_state as init_engine_state
 from core.engine import post_update as engine_post_update
@@ -154,11 +155,9 @@ def node_engine(state: GraphState) -> GraphState:
 
 def node_prompt_shaper(state: GraphState) -> GraphState:
     decision = state["decision"]
-    ctx = state["context"]
 
     urgency = float(decision.get("urgency", 0.0))
     expertise = float(decision.get("user_expertise", 0.5))
-    complexity = float(ctx.get("complexity", 0.3))
 
     if decision["action"] == "act_respond":
         style_modifier = str(decision.get("style_modifier") or "style_concise")
@@ -182,54 +181,11 @@ def node_prompt_shaper(state: GraphState) -> GraphState:
             "Avoid unsupported precise numeric claims (percentages, exact rates, exact counts) unless grounded in provided evidence. "
             "Do not add greetings or self-introductions."
         )
-    elif decision["action"] == "act_clarify":
-        system = (
-            "You are Qwestor. Ask exactly one short clarifying question. "
-            "Do not answer yet. Do not add greetings or self-introductions."
-        )
-    elif decision["action"] == "act_decompose":
-        system = (
-            "You are Qwestor. Break the user request into a short numbered plan "
-            "(3-7 concrete steps) with dependencies and execution order. "
-            "Do not provide the full final solution yet. "
-            "Do not add greetings or self-introductions."
-        )
-    elif decision["action"] == "act_verify":
-        system = (
-            "You are Qwestor. Verify factual claims carefully before finalizing the answer. "
-            "Use the provided notes as evidence, explicitly state uncertainty when needed, "
-            "and avoid unsupported claims. "
-            "Do not add greetings or self-introductions."
-        )
-    elif decision["action"] == "act_think":
-        system = (
-            "You are Qwestor. Think through the problem briefly before answering. "
-            "Present a concise, reasoned answer with one caveat if uncertainty exists. "
-            "Do not ask a clarifying question unless essential details are missing and no reasonable assumption is possible. "
-            "Do not add greetings or self-introductions."
-        )
-    elif decision["action"] == "act_search":
-        system = (
-            "You are Qwestor. Provide evidence-first output. "
-            "List concise findings and clearly mark what still needs verification. "
-            "Do not produce a fully synthesized final conclusion. "
-            "Do not add greetings or self-introductions."
-        )
-    elif decision["action"] == "act_synthesize":
-        system = (
-            "You are Qwestor. Synthesize multiple findings into one coherent answer. "
-            "Highlight agreements, key differences, and one concise caveat about uncertainty. "
-            "Do not add greetings or self-introductions."
-        )
     else:
-        depth = "Provide a deeper, structured explanation with examples."
-        if complexity >= 0.7:
-            depth = "Provide a deep, structured explanation with clear sections and examples."
-        if expertise <= 0.4:
-            depth += " Keep terminology beginner-friendly."
-        elif expertise >= 0.7:
-            depth += " You can use precise technical terminology."
-        system = f"You are Qwestor. {depth} Do not add greetings or self-introductions."
+        try:
+            system = get_action_system_prompt(str(decision["action"]))
+        except KeyError as exc:
+            raise RuntimeError(str(exc)) from exc
 
     return {"system_prompt": system}
 

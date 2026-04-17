@@ -71,3 +71,18 @@ class RoutingInputs(TypedDict):
     decompose_urgent_min_complexity: float
     decompose_max_ambiguity: float
 
+
+class StyleInputs(TypedDict):
+    urgency: float
+    complexity: float
+    ambiguity: float
+    user_expertise: float
+    threshold: float
+    failure_wariness: float
+    low_confidence: float
+    resolution: float
+    approach: float
+    creativity: float
+    risk_aversion: float
+    verify_request: bool
+

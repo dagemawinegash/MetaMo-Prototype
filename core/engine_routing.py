@@ -4,32 +4,41 @@ from core.engine_state import ACTION_ACTIVE_FLOOR, ACTION_BLOCKED_SCORE
 from schemas import RoutingInputs
 
 
-# Routing guardrails
-def _apply_routing_guards(
-    scores: dict[str, float],
-    inputs: RoutingInputs,
-) -> dict[str, float]:
-    """Apply hard constraints and context routing arbitration on raw action scores."""
-    cx = float(inputs["cx"])
-    ambiguity = float(inputs["ambiguity"])
-    threshold = float(inputs["threshold"])
-    threshold_signal = float(inputs["threshold_signal"])
-    familiarity_signal = float(inputs["familiarity_signal"])
-    failure_signal = float(inputs["failure_signal"])
-    urgent_flag = bool(inputs["urgent_flag"])
-    intent_type = str(inputs["intent_type"])
-    verify_request = bool(inputs["verify_request"])
-    reflective_intent = float(inputs["reflective_intent"])
-    needs_external_evidence = float(inputs["needs_external_evidence"])
-    needs_task_plan = float(inputs["needs_task_plan"])
-    needs_multi_source_integration = float(inputs["needs_multi_source_integration"])
-    low_confidence = float(inputs["low_confidence"])
-    failure_wariness = float(inputs["failure_wariness"])
-    approach = float(inputs["approach"])
-    help_short = float(inputs["help_short"])
-    decompose_min_complexity = float(inputs["decompose_min_complexity"])
-    decompose_urgent_min_complexity = float(inputs["decompose_urgent_min_complexity"])
-    decompose_max_ambiguity = float(inputs["decompose_max_ambiguity"])
+def _extract_routing_context(inputs: RoutingInputs) -> dict[str, float | bool | str]:
+    return {
+        "cx": float(inputs["cx"]),
+        "ambiguity": float(inputs["ambiguity"]),
+        "threshold": float(inputs["threshold"]),
+        "threshold_signal": float(inputs["threshold_signal"]),
+        "familiarity_signal": float(inputs["familiarity_signal"]),
+        "failure_signal": float(inputs["failure_signal"]),
+        "urgent_flag": bool(inputs["urgent_flag"]),
+        "intent_type": str(inputs["intent_type"]),
+        "verify_request": bool(inputs["verify_request"]),
+        "reflective_intent": float(inputs["reflective_intent"]),
+        "needs_external_evidence": float(inputs["needs_external_evidence"]),
+        "needs_task_plan": float(inputs["needs_task_plan"]),
+        "needs_multi_source_integration": float(inputs["needs_multi_source_integration"]),
+        "low_confidence": float(inputs["low_confidence"]),
+        "failure_wariness": float(inputs["failure_wariness"]),
+        "approach": float(inputs["approach"]),
+        "help_short": float(inputs["help_short"]),
+        "decompose_min_complexity": float(inputs["decompose_min_complexity"]),
+        "decompose_urgent_min_complexity": float(inputs["decompose_urgent_min_complexity"]),
+        "decompose_max_ambiguity": float(inputs["decompose_max_ambiguity"]),
+    }
+
+
+def _apply_decompose_guards(scores: dict[str, float], ctx: dict[str, float | bool | str]) -> None:
+    cx = float(ctx["cx"])
+    ambiguity = float(ctx["ambiguity"])
+    urgent_flag = bool(ctx["urgent_flag"])
+    reflective_intent = float(ctx["reflective_intent"])
+    needs_external_evidence = float(ctx["needs_external_evidence"])
+    needs_task_plan = float(ctx["needs_task_plan"])
+    decompose_min_complexity = float(ctx["decompose_min_complexity"])
+    decompose_urgent_min_complexity = float(ctx["decompose_urgent_min_complexity"])
+    decompose_max_ambiguity = float(ctx["decompose_max_ambiguity"])
 
     decompose_min = (
         decompose_urgent_min_complexity if urgent_flag else decompose_min_complexity
@@ -49,6 +58,15 @@ def _apply_routing_guards(
             scores["act_decompose"] += 0.10
         elif needs_task_plan <= 0.18 and cx < 0.55:
             scores["act_decompose"] -= 0.30
+
+
+def _apply_search_synthesize_local_guards(
+    scores: dict[str, float], ctx: dict[str, float | bool | str]
+) -> None:
+    needs_external_evidence = float(ctx["needs_external_evidence"])
+    needs_task_plan = float(ctx["needs_task_plan"])
+    needs_multi_source_integration = float(ctx["needs_multi_source_integration"])
+    verify_request = bool(ctx["verify_request"])
 
     if "act_search" in scores:
         if needs_external_evidence >= 0.60:
@@ -70,6 +88,14 @@ def _apply_routing_guards(
             scores["act_synthesize"] -= 0.22
         if needs_external_evidence >= 0.85 and needs_task_plan <= 0.45:
             scores["act_synthesize"] -= 0.15
+
+
+def _apply_search_synthesize_arbitration(
+    scores: dict[str, float], ctx: dict[str, float | bool | str]
+) -> None:
+    needs_external_evidence = float(ctx["needs_external_evidence"])
+    needs_task_plan = float(ctx["needs_task_plan"])
+    needs_multi_source_integration = float(ctx["needs_multi_source_integration"])
 
     if (
         "act_search" in scores
@@ -118,6 +144,16 @@ def _apply_routing_guards(
             scores["act_search"] += 0.18
             scores["act_synthesize"] -= 0.18
 
+
+def _apply_verify_guards(scores: dict[str, float], ctx: dict[str, float | bool | str]) -> None:
+    ambiguity = float(ctx["ambiguity"])
+    threshold = float(ctx["threshold"])
+    low_confidence = float(ctx["low_confidence"])
+    failure_wariness = float(ctx["failure_wariness"])
+    verify_request = bool(ctx["verify_request"])
+    cx = float(ctx["cx"])
+    intent_type = str(ctx["intent_type"])
+
     if "act_verify" in scores:
         if ambiguity >= 0.85:
             scores["act_verify"] = ACTION_BLOCKED_SCORE
@@ -142,6 +178,15 @@ def _apply_routing_guards(
     ):
         scores["act_verify"] -= 0.20
 
+
+def _apply_intent_and_ambiguity_guards(
+    scores: dict[str, float], ctx: dict[str, float | bool | str]
+) -> None:
+    intent_type = str(ctx["intent_type"])
+    verify_request = bool(ctx["verify_request"])
+    ambiguity = float(ctx["ambiguity"])
+    cx = float(ctx["cx"])
+
     if (
         intent_type == "factual"
         and not verify_request
@@ -156,6 +201,17 @@ def _apply_routing_guards(
             scores["act_clarify"] += 0.24
         if "act_synthesize" in scores:
             scores["act_synthesize"] -= 0.35
+
+
+def _apply_fast_lane_guards(scores: dict[str, float], ctx: dict[str, float | bool | str]) -> None:
+    cx = float(ctx["cx"])
+    ambiguity = float(ctx["ambiguity"])
+    threshold_signal = float(ctx["threshold_signal"])
+    failure_signal = float(ctx["failure_signal"])
+    familiarity_signal = float(ctx["familiarity_signal"])
+    low_confidence = float(ctx["low_confidence"])
+    verify_request = bool(ctx["verify_request"])
+    help_short = float(ctx["help_short"])
 
     if (
         cx <= 0.30
@@ -193,6 +249,19 @@ def _apply_routing_guards(
         if "act_respond" in scores:
             scores["act_respond"] += 0.40
 
+
+def _apply_final_think_synthesize_guards(
+    scores: dict[str, float], ctx: dict[str, float | bool | str]
+) -> None:
+    cx = float(ctx["cx"])
+    ambiguity = float(ctx["ambiguity"])
+    low_confidence = float(ctx["low_confidence"])
+    approach = float(ctx["approach"])
+    threshold = float(ctx["threshold"])
+    failure_wariness = float(ctx["failure_wariness"])
+    verify_request = bool(ctx["verify_request"])
+    reflective_intent = float(ctx["reflective_intent"])
+
     if "act_think" in scores and not (
         cx >= 0.55
         or ambiguity >= 0.40
@@ -220,6 +289,21 @@ def _apply_routing_guards(
     ):
         scores["act_synthesize"] = ACTION_BLOCKED_SCORE
 
+
+# Routing guardrails
+def _apply_routing_guards(
+    scores: dict[str, float],
+    inputs: RoutingInputs,
+) -> dict[str, float]:
+    """Apply hard constraints and context routing arbitration on raw action scores."""
+    ctx = _extract_routing_context(inputs)
+    _apply_decompose_guards(scores, ctx)
+    _apply_search_synthesize_local_guards(scores, ctx)
+    _apply_search_synthesize_arbitration(scores, ctx)
+    _apply_verify_guards(scores, ctx)
+    _apply_intent_and_ambiguity_guards(scores, ctx)
+    _apply_fast_lane_guards(scores, ctx)
+    _apply_final_think_synthesize_guards(scores, ctx)
     return scores
 
 

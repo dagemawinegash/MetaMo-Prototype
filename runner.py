@@ -58,45 +58,47 @@ def load_sessions(base_dir: Path) -> list[dict]:
     return sessions
 
 
-def _run_single_turn(
+def _compute_turn_eval(
     *,
-    app,
-    run_logger: RunLogger,
     session_name: str,
     turn_index: int,
     query: str,
     expected_action: str,
     acceptable_for_turn: list[str],
-    engine_state: dict,
+    predicted_action: str,
     soft_credit: float,
-) -> tuple[dict, dict]:
-    pre_engine_state = copy.deepcopy(engine_state)
-    out = app.invoke({"query": query, "engine_state": engine_state})
-    updated_engine_state = out.get("engine_state", engine_state)
-
-    decision = out.get("decision", {})
-    ctx = out.get("context", {})
-    params = updated_engine_state.get("params", {})
-    context_memory_enabled = bool(params.get("enable_context_memory", False))
-    context_window_turns = int(params.get("context_window_turns", 0))
-
-    action = decision.get("action", "?")
-    strict_correct = int(action == expected_action)
-    acceptable_hit = int(action in acceptable_for_turn and not strict_correct)
+) -> dict:
+    strict_correct = int(predicted_action == expected_action)
+    acceptable_hit = int(predicted_action in acceptable_for_turn and not strict_correct)
     soft_score = 1.0 if strict_correct else (soft_credit if acceptable_hit else 0.0)
-
-    turn_record = {
+    return {
         "session": session_name,
         "turn": turn_index,
         "query": query,
         "expected_action": expected_action,
         "acceptable_actions": acceptable_for_turn,
-        "predicted_action": action,
+        "predicted_action": predicted_action,
         "strict_correct": strict_correct,
         "acceptable_hit": acceptable_hit,
         "soft_score": soft_score,
     }
 
+
+def _build_log_payload(
+    *,
+    run_logger: RunLogger,
+    session_name: str,
+    turn_index: int,
+    query: str,
+    out: dict,
+    decision: dict,
+    context: dict,
+    pre_engine_state: dict,
+    updated_engine_state: dict,
+    context_memory_enabled: bool,
+    context_window_turns: int,
+) -> tuple[LogTurnPayload, dict]:
+    action = str(decision.get("action", "?"))
     style_modifier = str(
         decision.get("style_modifier")
         if decision.get("style_modifier") is not None
@@ -119,9 +121,9 @@ def _run_single_turn(
     intent_type = str(decision.get("intent_type", "mixed"))
     score_top3 = decision.get("score_top3", [])
     homeo_debug = updated_engine_state.get("homeostasis_debug", {})
-    complexity = float(ctx.get("complexity", 0.0))
-    ambiguity = float(ctx.get("ambiguity", 0.0))
-    answer = out.get("answer", "")
+    complexity = float(context.get("complexity", 0.0))
+    ambiguity = float(context.get("ambiguity", 0.0))
+    answer = str(out.get("answer", ""))
 
     homeo_mode, homeo_trigger_count, homeo_trigger_keys, homeo_suffix = (
         run_logger.extract_homeostasis(homeo_debug)
@@ -184,24 +186,85 @@ def _run_single_turn(
         "context_window_turns": context_window_turns,
         "score_top3_text": score_top3_text,
         "answer": answer,
-        "context": ctx,
+        "context": context,
         "decision": decision_min,
         "pre_update": pre_update,
         "post_update": post_update,
     }
-    run_logger.log_turn(log_payload)
+    print_data = {
+        "action": action,
+        "context_memory_enabled": context_memory_enabled,
+        "context_window_turns": context_window_turns,
+        "style_suffix": style_suffix,
+        "homeo_suffix": homeo_suffix,
+        "score_parts": score_parts,
+        "answer": answer,
+    }
+    return log_payload, print_data
 
+
+def _print_turn_output(*, turn_index: int, print_data: dict) -> None:
     print(
-        f"{turn_index}. {action}"
-        f" | ctx_mem={'on' if context_memory_enabled else 'off'}"
-        f" ctx_k={context_window_turns}"
-        f"{style_suffix}"
-        f"{homeo_suffix}"
+        f"{turn_index}. {print_data['action']}"
+        f" | ctx_mem={'on' if print_data['context_memory_enabled'] else 'off'}"
+        f" ctx_k={print_data['context_window_turns']}"
+        f"{print_data['style_suffix']}"
+        f"{print_data['homeo_suffix']}"
     )
-    if score_parts:
-        print("scores_top3: " + " | ".join(score_parts))
-    print(answer)
+    if print_data["score_parts"]:
+        print("scores_top3: " + " | ".join(print_data["score_parts"]))
+    print(print_data["answer"])
     print("-" * 60)
+
+
+def _run_single_turn(
+    *,
+    app,
+    run_logger: RunLogger,
+    session_name: str,
+    turn_index: int,
+    query: str,
+    expected_action: str,
+    acceptable_for_turn: list[str],
+    engine_state: dict,
+    soft_credit: float,
+) -> tuple[dict, dict]:
+    pre_engine_state = copy.deepcopy(engine_state)
+    out = app.invoke({"query": query, "engine_state": engine_state})
+    updated_engine_state = out.get("engine_state", engine_state)
+
+    decision = out.get("decision", {})
+    ctx = out.get("context", {})
+    params = updated_engine_state.get("params", {})
+    context_memory_enabled = bool(params.get("enable_context_memory", False))
+    context_window_turns = int(params.get("context_window_turns", 0))
+
+    predicted_action = str(decision.get("action", "?"))
+    turn_record = _compute_turn_eval(
+        session_name=session_name,
+        turn_index=turn_index,
+        query=query,
+        expected_action=expected_action,
+        acceptable_for_turn=acceptable_for_turn,
+        predicted_action=predicted_action,
+        soft_credit=soft_credit,
+    )
+
+    log_payload, print_data = _build_log_payload(
+        run_logger=run_logger,
+        session_name=session_name,
+        turn_index=turn_index,
+        query=query,
+        out=out,
+        decision=decision,
+        context=ctx,
+        pre_engine_state=pre_engine_state,
+        updated_engine_state=updated_engine_state,
+        context_memory_enabled=context_memory_enabled,
+        context_window_turns=context_window_turns,
+    )
+    run_logger.log_turn(log_payload)
+    _print_turn_output(turn_index=turn_index, print_data=print_data)
 
     return updated_engine_state, turn_record
 

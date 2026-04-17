@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from core.engine_routing import _apply_routing_guards, _select_action
 from core.engine_scoring import _action_reason, _score_actions
-from schemas import RoutingInputs, ScoringInputs
+from schemas import RoutingInputs, ScoringInputs, StyleInputs
 from core.engine_state import (
     DEFAULT_ANTI_GOALS,
     _anti_goal_targets,
@@ -17,20 +17,21 @@ from utils import clamp_to_unit_interval
 
 
 def _determine_respond_style(
-    *,
-    urgency: float,
-    complexity: float,
-    ambiguity: float,
-    user_expertise: float,
-    threshold: float,
-    failure_wariness: float,
-    low_confidence: float,
-    resolution: float,
-    approach: float,
-    creativity: float,
-    risk_aversion: float,
-    verify_request: bool,
+    style_inputs: StyleInputs,
 ) -> str:
+    urgency = style_inputs["urgency"]
+    complexity = style_inputs["complexity"]
+    ambiguity = style_inputs["ambiguity"]
+    user_expertise = style_inputs["user_expertise"]
+    threshold = style_inputs["threshold"]
+    failure_wariness = style_inputs["failure_wariness"]
+    low_confidence = style_inputs["low_confidence"]
+    resolution = style_inputs["resolution"]
+    approach = style_inputs["approach"]
+    creativity = style_inputs["creativity"]
+    risk_aversion = style_inputs["risk_aversion"]
+    verify_request = style_inputs["verify_request"]
+
     style_scores = {
         "style_concise": 0.40
         + 0.70 * urgency
@@ -224,6 +225,32 @@ def _build_routing_inputs(
     }
 
 
+def _build_style_inputs(
+    values: dict[str, float | bool | str],
+    *,
+    urgency: float,
+    complexity: float,
+    ambiguity: float,
+    threshold: float,
+    low_confidence: float,
+    resolution: float,
+) -> StyleInputs:
+    return {
+        "urgency": urgency,
+        "complexity": complexity,
+        "ambiguity": ambiguity,
+        "user_expertise": float(values["ux"]),
+        "threshold": threshold,
+        "failure_wariness": float(values["failure_wariness"]),
+        "low_confidence": low_confidence,
+        "resolution": resolution,
+        "approach": float(values["approach"]),
+        "creativity": float(values["creativity"]),
+        "risk_aversion": float(values["risk_aversion"]),
+        "verify_request": bool(values["verify_request"]),
+    }
+
+
 def _build_step_decision(
     *,
     best_action: str,
@@ -354,20 +381,16 @@ def step(context: dict, state: dict) -> dict:
     )
     style_modifier = None
     if best_action == "act_respond":
-        style_modifier = _determine_respond_style(
+        style_inputs = _build_style_inputs(
+            values,
             urgency=u,
             complexity=cx,
             ambiguity=ambiguity,
-            user_expertise=float(values["ux"]),
             threshold=threshold,
-            failure_wariness=float(values["failure_wariness"]),
             low_confidence=low_confidence,
             resolution=res,
-            approach=float(values["approach"]),
-            creativity=float(values["creativity"]),
-            risk_aversion=float(values["risk_aversion"]),
-            verify_request=bool(values["verify_request"]),
         )
+        style_modifier = _determine_respond_style(style_inputs)
     reason = _action_reason(best_action)
 
     return _build_step_decision(
