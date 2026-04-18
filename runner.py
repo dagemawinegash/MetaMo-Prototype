@@ -6,7 +6,7 @@ import importlib.util
 import json
 
 from pipeline.graph import build_graph
-from core.engine import init_state as init_engine_state
+from core.state import init_state as init_engine_state
 from run_logger import RunLogger
 from schemas import LogTurnPayload
 

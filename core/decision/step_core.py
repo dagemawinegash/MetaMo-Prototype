@@ -1,66 +1,13 @@
 from __future__ import annotations
 
+from config import DEFAULT_ANTI_GOALS
 from core.engine_routing import _apply_routing_guards, _select_action
-from core.engine_scoring import _action_reason, _score_actions
+from core.scoring import _action_reason, _score_actions
+from core.state import _appraise_modulators, _goal_weights
 from schemas import RoutingInputs, ScoringInputs, StyleInputs
-from core.engine_state import (
-    DEFAULT_ANTI_GOALS,
-    _anti_goal_targets,
-    _appraise_modulators,
-    _blend,
-    _goal_targets,
-    _goal_weights,
-    init_state,
-)
-from core.homeostasis import apply_homeostatic_contractivity
 from utils import clamp_to_unit_interval
 
-
-def _determine_respond_style(
-    style_inputs: StyleInputs,
-) -> str:
-    urgency = style_inputs["urgency"]
-    complexity = style_inputs["complexity"]
-    ambiguity = style_inputs["ambiguity"]
-    user_expertise = style_inputs["user_expertise"]
-    threshold = style_inputs["threshold"]
-    failure_wariness = style_inputs["failure_wariness"]
-    low_confidence = style_inputs["low_confidence"]
-    resolution = style_inputs["resolution"]
-    approach = style_inputs["approach"]
-    creativity = style_inputs["creativity"]
-    risk_aversion = style_inputs["risk_aversion"]
-    verify_request = style_inputs["verify_request"]
-
-    style_scores = {
-        "style_concise": 0.40
-        + 0.70 * urgency
-        + 0.20 * (1.0 - complexity)
-        + 0.15 * (1.0 - ambiguity),
-        "style_thorough": 0.35
-        + 0.55 * complexity
-        + 0.45 * resolution
-        + 0.15 * ambiguity
-        - 0.35 * urgency,
-        "style_exploratory": 0.30
-        + 0.55 * creativity
-        + 0.40 * approach
-        + 0.20 * complexity
-        - 0.35 * threshold
-        - 0.20 * risk_aversion
-        - 0.20 * failure_wariness,
-        "style_cautious": 0.35
-        + 0.55 * threshold
-        + 0.45 * low_confidence
-        + 0.30 * failure_wariness
-        + 0.20 * risk_aversion
-        + (0.25 if verify_request else 0.0),
-        "style_tutorial": 0.35
-        + 0.70 * (1.0 - user_expertise)
-        + 0.20 * ambiguity
-        + 0.10 * complexity,
-    }
-    return max(style_scores, key=style_scores.get)
+from .style import _determine_respond_style
 
 
 def _extract_step_settings(params: dict) -> dict[str, float]:
@@ -311,7 +258,6 @@ def _build_step_decision(
     }
 
 
-# Decision orchestration
 def step(context: dict, state: dict) -> dict:
     goals = state["goals"]
     anti_goals = state.get("anti_goals", DEFAULT_ANTI_GOALS.copy())
@@ -404,80 +350,3 @@ def step(context: dict, state: dict) -> dict:
         top_scores=top_scores,
     )
 
-
-# Post-decision state updates
-def post_update(context: dict, state: dict, decision: dict) -> dict:
-    goals = state["goals"]
-    anti_goals = state.get("anti_goals")
-    alpha = float(state["params"].get("goal_alpha", 0.18))
-    anti_alpha = float(state["params"].get("anti_goal_alpha", 0.16))
-    targets = _goal_targets(context, decision)
-
-    goals["efficiency"] = _blend(
-        float(goals["efficiency"]), targets["efficiency"], alpha
-    )
-    goals["accuracy"] = _blend(float(goals["accuracy"]), targets["accuracy"], alpha)
-    goals["success_moderate"] = _blend(
-        float(goals.get("success_moderate", 0.62)), targets["success_moderate"], alpha
-    )
-    goals["knowledge"] = _blend(
-        float(goals.get("knowledge", 0.52)), targets["knowledge"], alpha
-    )
-    goals["novelty"] = _blend(
-        float(goals.get("novelty", 0.46)), targets["novelty"], alpha
-    )
-    goals["success_breakthrough"] = _blend(
-        float(goals.get("success_breakthrough", 0.44)),
-        targets["success_breakthrough"],
-        alpha,
-    )
-    goals["coherence"] = _blend(
-        float(goals.get("coherence", 0.58)), targets["coherence"], alpha
-    )
-    goals["originality"] = _blend(
-        float(goals.get("originality", 0.48)), targets["originality"], alpha
-    )
-    goals["social"] = _blend(float(goals.get("social", 0.50)), targets["social"], alpha)
-    goals["help_short"] = _blend(
-        float(goals.get("help_short", 0.55)), targets["help_short"], alpha
-    )
-    goals["help_long"] = _blend(
-        float(goals.get("help_long", 0.45)), targets["help_long"], alpha
-    )
-    goals["over_beneficial"] = _blend(
-        float(goals.get("over_beneficial", 0.60)), targets["over_beneficial"], alpha
-    )
-    goals["over_safety"] = _blend(
-        float(goals.get("over_safety", 0.65)), targets["over_safety"], alpha
-    )
-    goals["over_honesty"] = _blend(
-        float(goals.get("over_honesty", 0.65)), targets["over_honesty"], alpha
-    )
-
-    if anti_goals is not None:
-        anti_targets = _anti_goal_targets(context, goals)
-        anti_goals["hallucinate"] = _blend(
-            float(anti_goals.get("hallucinate", 0.35)),
-            float(anti_targets.get("hallucinate", 0.35)),
-            anti_alpha,
-        )
-        anti_goals["redundant"] = _blend(
-            float(anti_goals.get("redundant", 0.30)),
-            float(anti_targets.get("redundant", 0.30)),
-            anti_alpha,
-        )
-        anti_goals["rabbit_hole"] = _blend(
-            float(anti_goals.get("rabbit_hole", 0.28)),
-            float(anti_targets.get("rabbit_hole", 0.28)),
-            anti_alpha,
-        )
-        anti_goals["premature"] = _blend(
-            float(anti_goals.get("premature", 0.30)),
-            float(anti_targets.get("premature", 0.30)),
-            anti_alpha,
-        )
-
-    apply_homeostatic_contractivity(state)
-
-    state["turn_count"] = int(state.get("turn_count", 0)) + 1
-    return state

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from core.engine_state import ACTION_ACTIVE_FLOOR, ACTION_BLOCKED_SCORE
+from core.state import ACTION_ACTIVE_FLOOR, ACTION_BLOCKED_SCORE
 from schemas import RoutingInputs
 
 

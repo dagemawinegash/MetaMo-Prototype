@@ -9,9 +9,9 @@ from pipeline.llm_client import build_chat_llm
 from utils import resolve_provider_and_model_name
 from config import get_action_system_prompt
 
-from core.engine import init_state as init_engine_state
-from core.engine import post_update as engine_post_update
-from core.engine import step as engine_step
+from core.state import init_state as init_engine_state
+from core.decision import post_update as engine_post_update
+from core.decision import step as engine_step
 from pipeline.parser import parse_context
 
 
