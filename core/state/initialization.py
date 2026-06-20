@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from config import DEFAULT_ANTI_GOALS
+from config import DEFAULT_ABLATION_SWITCHES, DEFAULT_ANTI_GOALS
 
 
 def init_state() -> dict:
@@ -75,6 +75,7 @@ def init_state() -> dict:
             "homeostasis_theta_safe": 0.55,
             "homeostasis_eta": 0.05,
             "homeostasis_alpha_near": 0.10,
+            **DEFAULT_ABLATION_SWITCHES,
         },
     }
 

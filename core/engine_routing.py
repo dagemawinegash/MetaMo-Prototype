@@ -294,16 +294,28 @@ def _apply_final_think_synthesize_guards(
 def _apply_routing_guards(
     scores: dict[str, float],
     inputs: RoutingInputs,
+    *,
+    apply_arbitration: bool = True,
 ) -> dict[str, float]:
     """Apply hard constraints and context routing arbitration on raw action scores."""
     ctx = _extract_routing_context(inputs)
     _apply_decompose_guards(scores, ctx)
     _apply_search_synthesize_local_guards(scores, ctx)
-    _apply_search_synthesize_arbitration(scores, ctx)
+    if apply_arbitration:
+        _apply_search_synthesize_arbitration(scores, ctx)
     _apply_verify_guards(scores, ctx)
     _apply_intent_and_ambiguity_guards(scores, ctx)
     _apply_fast_lane_guards(scores, ctx)
     _apply_final_think_synthesize_guards(scores, ctx)
+    return scores
+
+
+def _apply_action_arbitration(
+    scores: dict[str, float], inputs: RoutingInputs
+) -> dict[str, float]:
+    """Apply score arbitration without applying the routing guard layer."""
+    ctx = _extract_routing_context(inputs)
+    _apply_search_synthesize_arbitration(scores, ctx)
     return scores
 
 
@@ -315,12 +327,14 @@ def _select_action(
     low_confidence: float,
     threshold: float,
     intent_margin: float,
+    apply_arbitration: bool = True,
 ) -> tuple[str, list[tuple[str, float]]]:
     """Resolve tie-breaks and select the best action."""
     search_score = float(scores.get("act_search", ACTION_BLOCKED_SCORE))
     think_score = float(scores.get("act_think", ACTION_BLOCKED_SCORE))
     if (
-        search_score > ACTION_ACTIVE_FLOOR
+        apply_arbitration
+        and search_score > ACTION_ACTIVE_FLOOR
         and think_score > ACTION_ACTIVE_FLOOR
         and abs(search_score - think_score) <= intent_margin
     ):

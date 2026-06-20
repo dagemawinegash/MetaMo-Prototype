@@ -22,6 +22,7 @@ def parse_context(
     history_turns: list[dict[str, str]] | None = None,
     model: str | None = None,
     provider: str | None = None,
+    apply_calibration: bool = True,
 ) -> dict[str, Any]:
     load_dotenv()
     active_provider, resolved_model = resolve_provider_and_model_name(
@@ -46,6 +47,7 @@ def parse_context(
                 history_turns=history_turns,
                 api_key=api_key,
                 model=active_model,
+                apply_calibration=apply_calibration,
             )
         else:
             parsed, provider_error = _parse_with_gemini(
@@ -53,6 +55,7 @@ def parse_context(
                 history_turns=history_turns,
                 api_key=api_key,
                 model=active_model,
+                apply_calibration=apply_calibration,
             )
 
         if parsed is not None:
@@ -123,7 +126,9 @@ def _build_context_input(
     return "\n".join(parts)
 
 
-def _normalize_context_payload(payload: dict[str, Any]) -> dict[str, Any] | None:
+def _normalize_context_payload(
+    payload: dict[str, Any], *, apply_calibration: bool = True
+) -> dict[str, Any] | None:
     urgent_raw = payload.get("urgent", None)
     complexity_raw = payload.get("complexity", None)
     ambiguity_raw = payload.get("ambiguity", None)
@@ -169,18 +174,24 @@ def _normalize_context_payload(payload: dict[str, Any]) -> dict[str, Any] | None
 
     if intent_type_raw not in {"reflective", "factual", "mixed"}:
         intent_type_raw = "mixed"
-    (
-        needs_external_evidence,
-        needs_task_plan,
-        needs_multi_source_integration,
-    ) = _calibrate_action_signals(
-        needs_external_evidence=needs_external_evidence,
-        needs_task_plan=needs_task_plan,
-        needs_multi_source_integration=needs_multi_source_integration,
-        ambiguity=ambiguity,
-        intent_type=intent_type_raw,
-        reflective_intent=reflective_intent,
-    )
+    raw_action_signals = {
+        "needs_external_evidence": needs_external_evidence,
+        "needs_task_plan": needs_task_plan,
+        "needs_multi_source_integration": needs_multi_source_integration,
+    }
+    if apply_calibration:
+        (
+            needs_external_evidence,
+            needs_task_plan,
+            needs_multi_source_integration,
+        ) = _calibrate_action_signals(
+            needs_external_evidence=needs_external_evidence,
+            needs_task_plan=needs_task_plan,
+            needs_multi_source_integration=needs_multi_source_integration,
+            ambiguity=ambiguity,
+            intent_type=intent_type_raw,
+            reflective_intent=reflective_intent,
+        )
 
     return {
         "urgent": urgent,
@@ -197,6 +208,15 @@ def _normalize_context_payload(payload: dict[str, Any]) -> dict[str, Any] | None
         "needs_task_plan": needs_task_plan,
         "needs_multi_source_integration": needs_multi_source_integration,
         "valence": valence,
+        "parser_calibration": {
+            "enabled": apply_calibration,
+            "raw": raw_action_signals,
+            "output": {
+                "needs_external_evidence": needs_external_evidence,
+                "needs_task_plan": needs_task_plan,
+                "needs_multi_source_integration": needs_multi_source_integration,
+            },
+        },
     }
 
 
@@ -207,6 +227,7 @@ def _parse_with_provider(
     history_turns: list[dict[str, str]] | None,
     api_key: str,
     model: str,
+    apply_calibration: bool,
 ) -> tuple[dict[str, Any] | None, str]:
     try:
         messages_mod = importlib.import_module("langchain_core.messages")
@@ -240,7 +261,9 @@ def _parse_with_provider(
             )
         raw = out.content if hasattr(out, "content") else str(out)
         payload = _extract_json(_to_text(raw))
-        normalized = _normalize_context_payload(payload)
+        normalized = _normalize_context_payload(
+            payload, apply_calibration=apply_calibration
+        )
         if normalized is None:
             return None, "payload_normalization_failed"
         return normalized, ""
@@ -253,6 +276,7 @@ def _parse_with_gemini(
     history_turns: list[dict[str, str]] | None,
     api_key: str,
     model: str,
+    apply_calibration: bool,
 ) -> tuple[dict[str, Any] | None, str]:
     return _parse_with_provider(
         provider_name="gemini",
@@ -260,6 +284,7 @@ def _parse_with_gemini(
         history_turns=history_turns,
         api_key=api_key,
         model=model,
+        apply_calibration=apply_calibration,
     )
 
 
@@ -268,6 +293,7 @@ def _parse_with_openai(
     history_turns: list[dict[str, str]] | None,
     api_key: str,
     model: str,
+    apply_calibration: bool,
 ) -> tuple[dict[str, Any] | None, str]:
     return _parse_with_provider(
         provider_name="openai",
@@ -275,6 +301,7 @@ def _parse_with_openai(
         history_turns=history_turns,
         api_key=api_key,
         model=model,
+        apply_calibration=apply_calibration,
     )
 
 

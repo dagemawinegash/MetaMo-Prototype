@@ -1,7 +1,11 @@
 from __future__ import annotations
 
 from config import DEFAULT_ANTI_GOALS
-from core.engine_routing import _apply_routing_guards, _select_action
+from core.engine_routing import (
+    _apply_action_arbitration,
+    _apply_routing_guards,
+    _select_action,
+)
 from core.scoring import _action_reason, _score_actions
 from core.state import _appraise_modulators, _goal_weights
 from schemas import RoutingInputs, ScoringInputs, StyleInputs
@@ -308,7 +312,13 @@ def step(context: dict, state: dict) -> dict:
         low_confidence=low_confidence,
         answerability=answerability,
     )
-    scores = _score_actions(scoring_inputs)
+    action_adjustments_disabled = bool(
+        params.get("disable_action_adjustments", False)
+    )
+    scores = _score_actions(
+        scoring_inputs,
+        apply_action_adjustments=not action_adjustments_disabled,
+    )
 
     routing_inputs = _build_routing_inputs(
         values=values,
@@ -316,7 +326,18 @@ def step(context: dict, state: dict) -> dict:
         settings=settings,
         low_confidence=low_confidence,
     )
-    scores = _apply_routing_guards(scores, routing_inputs)
+    routing_guards_disabled = bool(params.get("disable_routing_guards", False))
+    action_arbitration_disabled = bool(
+        params.get("disable_action_arbitration", False)
+    )
+    if not routing_guards_disabled:
+        scores = _apply_routing_guards(
+            scores,
+            routing_inputs,
+            apply_arbitration=not action_arbitration_disabled,
+        )
+    elif not action_arbitration_disabled:
+        scores = _apply_action_arbitration(scores, routing_inputs)
 
     best_action, top_scores = _select_action(
         scores,
@@ -324,6 +345,7 @@ def step(context: dict, state: dict) -> dict:
         low_confidence=low_confidence,
         threshold=threshold,
         intent_margin=settings["intent_margin"],
+        apply_arbitration=not action_arbitration_disabled,
     )
     style_modifier = None
     if best_action == "act_respond":

@@ -26,3 +26,12 @@ DEFAULT_ALPHA_PARAMS = {
     "valence_alpha": 0.40,
 }
 
+
+
+DEFAULT_ABLATION_SWITCHES = {
+    "disable_parser_calibration": False,
+    "disable_cold_start": False,
+    "disable_routing_guards": False,
+    "disable_action_arbitration": False,
+    "disable_action_adjustments": False,
+}

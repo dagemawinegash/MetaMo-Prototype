@@ -270,7 +270,12 @@ def _appraise_modulators(
     )
 
     turn_count = int(state.get("turn_count", 0))
-    if alpha["cold_start_horizon"] > 0.0 and turn_count < alpha["cold_start_horizon"]:
+    cold_start_disabled = bool(params.get("disable_cold_start", False))
+    if (
+        not cold_start_disabled
+        and alpha["cold_start_horizon"] > 0.0
+        and turn_count < alpha["cold_start_horizon"]
+    ):
         cold_phase = (alpha["cold_start_horizon"] - float(turn_count)) / alpha["cold_start_horizon"]
         cold_weight = clamp_to_unit_interval(alpha["cold_start_strength"] * cold_phase)
     else:

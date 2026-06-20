@@ -46,7 +46,12 @@ CSV_FIELDS = [
 
 
 class RunLogger:
-    def __init__(self, sessions: list[dict[str, Any]], base_dir: Path) -> None:
+    def __init__(
+        self,
+        sessions: list[dict[str, Any]],
+        base_dir: Path,
+        run_config: dict[str, Any] | None = None,
+    ) -> None:
         run_timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         self.run_id = f"run_{run_timestamp}"
         self.logs_dir = base_dir / "logs" / self.run_id
@@ -62,6 +67,7 @@ class RunLogger:
                     "run_id": self.run_id,
                     "created_at": datetime.now().isoformat(timespec="seconds"),
                     "sessions": [s.get("name", "") for s in sessions],
+                    "run_config": copy.deepcopy(run_config or {}),
                 },
                 meta_file,
                 ensure_ascii=True,

@@ -57,13 +57,16 @@ def _extract_scoring_context(inputs: ScoringInputs) -> dict:
 
 def _score_actions(
     inputs: ScoringInputs,
+    *,
+    apply_action_adjustments: bool = True,
 ) -> dict[str, float]:
     """Score all actions using weighted relevance and anti-goal penalties."""
     v = _extract_scoring_context(inputs)
     scores: dict[str, float] = {}
     for action in ACTIONS:
         score = _weighted_relevance_score(action, v["cx"], v["weights"])
-        score = _apply_action_adjustments(action, score, v)
+        if apply_action_adjustments:
+            score = _apply_action_adjustments(action, score, v)
         score = _apply_penalties_and_overgoals(action, score, v)
         scores[action] = score
 

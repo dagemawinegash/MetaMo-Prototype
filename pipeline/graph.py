@@ -135,6 +135,9 @@ def _history_block(state: GraphState) -> str:
 def node_context_parser(state: GraphState) -> GraphState:
     query = state["query"]
     history_turns = _recent_history(state)
+    engine_state = state.get("engine_state") or {}
+    params = engine_state.get("params", {})
+    apply_calibration = not bool(params.get("disable_parser_calibration", False))
     load_dotenv()
     provider_name, model_name = resolve_provider_and_model_name()
 
@@ -143,6 +146,7 @@ def node_context_parser(state: GraphState) -> GraphState:
         history_turns=history_turns,
         model=model_name,
         provider=provider_name,
+        apply_calibration=apply_calibration,
     )
     return {"context": ctx}
 

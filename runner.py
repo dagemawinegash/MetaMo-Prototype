@@ -1,19 +1,61 @@
 from __future__ import annotations
 
+import argparse
 from pathlib import Path
 import copy
 import importlib.util
 import json
 
+from config import DEFAULT_ABLATION_SWITCHES
 from pipeline.graph import build_graph
 from core.state import init_state as init_engine_state
 from run_logger import RunLogger
 from schemas import LogTurnPayload
 
 
-def load_sessions(base_dir: Path) -> list[dict]:
-    sessions_file = base_dir / "tests" / "sessions" / "session_short.py"
-    spec = importlib.util.spec_from_file_location("session_short", sessions_file)
+SESSION_FILES = {
+    "short": "session_short.py",
+    "medium": "session_medium.py",
+    "hardcore": "session_hardcore_research.py",
+}
+
+
+ABLATION_SWITCH_HELP = {
+    "disable_parser_calibration": "Disable parser action-signal calibration.",
+    "disable_cold_start": "Disable early-turn cold-start blending.",
+    "disable_routing_guards": "Disable post-scoring routing guardrails.",
+    "disable_action_arbitration": "Disable action arbitration and tie-breaking.",
+    "disable_action_adjustments": "Disable action-specific scoring adjustments.",
+}
+
+
+def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Run MetaMo evaluation sessions.")
+    parser.add_argument(
+        "--sessions",
+        choices=tuple(SESSION_FILES),
+        default="short",
+        help="Session set to run (default: short).",
+    )
+    for switch_name, help_text in ABLATION_SWITCH_HELP.items():
+        parser.add_argument(
+            f"--{switch_name.replace('_', '-')}",
+            action="store_true",
+            help=help_text,
+        )
+    return parser.parse_args(argv)
+
+
+def _ablation_switches_from_args(args: argparse.Namespace) -> dict[str, bool]:
+    return {
+        switch_name: bool(getattr(args, switch_name))
+        for switch_name in DEFAULT_ABLATION_SWITCHES
+    }
+
+
+def load_sessions(base_dir: Path, session_set: str = "short") -> list[dict]:
+    sessions_file = base_dir / "tests" / "sessions" / SESSION_FILES[session_set]
+    spec = importlib.util.spec_from_file_location(f"session_{session_set}", sessions_file)
     if spec is None or spec.loader is None:
         raise ValueError("Could not load session file")
 
@@ -275,10 +317,12 @@ def _run_single_session(
     run_logger: RunLogger,
     session: dict,
     soft_credit: float,
+    ablation_switches: dict[str, bool],
 ) -> tuple[list[dict], dict]:
     print(f"\n{session['name']}")
     print("=" * len(session["name"]))
     engine_state = init_engine_state()
+    engine_state["params"].update(ablation_switches)
     expected_actions = session["expected_actions"]
     acceptable_actions = session["acceptable_actions"]
     session_turn_records: list[dict] = []
@@ -338,9 +382,12 @@ def _save_eval_files(
         json.dump(strict_overall, f, ensure_ascii=True, indent=2)
 
 
-def main() -> None:
+def main(argv: list[str] | None = None) -> None:
+    args = _parse_args(argv)
+    ablation_switches = _ablation_switches_from_args(args)
+    base_dir = Path(__file__).resolve().parent
     app = build_graph()
-    sessions = load_sessions(Path(__file__).resolve().parent)
+    sessions = load_sessions(base_dir, args.sessions)
     strict_turn_records: list[dict] = []
     strict_session_records: list[dict] = []
     total_correct = 0
@@ -348,13 +395,22 @@ def main() -> None:
     soft_total_score = 0.0
     soft_credit = 0.8
 
-    with RunLogger(sessions, Path(__file__).resolve().parent) as run_logger:
+    run_config = {
+        "session_set": args.sessions,
+        "session_file": SESSION_FILES[args.sessions],
+        "ablation_switches": ablation_switches,
+    }
+    print(f"Session set: {args.sessions} ({SESSION_FILES[args.sessions]})")
+    print(f"Ablation switches: {ablation_switches}")
+
+    with RunLogger(sessions, base_dir, run_config=run_config) as run_logger:
         for session in sessions:
             session_turn_records, session_record = _run_single_session(
                 app=app,
                 run_logger=run_logger,
                 session=session,
                 soft_credit=soft_credit,
+                ablation_switches=ablation_switches,
             )
             strict_turn_records.extend(session_turn_records)
             strict_session_records.append(session_record)
@@ -376,6 +432,8 @@ def main() -> None:
                 float(soft_total_score) / float(total_turns) if total_turns else 0.0
             ),
             "soft_credit_for_acceptable": soft_credit,
+            "session_set": args.sessions,
+            "ablation_switches": ablation_switches,
         }
 
         _save_eval_files(
