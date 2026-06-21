@@ -25,9 +25,6 @@ def _extract_step_settings(params: dict) -> dict[str, float]:
         "reflective_search_penalty": float(
             params.get("reflective_search_penalty", 0.10)
         ),
-        "intent_margin": float(
-            params.get("intent_margin", params.get("think_search_tie_margin", 0.12))
-        ),
     }
 
 
@@ -339,14 +336,7 @@ def step(context: dict, state: dict) -> dict:
     elif not action_arbitration_disabled:
         scores = _apply_action_arbitration(scores, routing_inputs)
 
-    best_action, top_scores = _select_action(
-        scores,
-        intent_type=str(values["intent_type"]),
-        low_confidence=low_confidence,
-        threshold=threshold,
-        intent_margin=settings["intent_margin"],
-        apply_arbitration=not action_arbitration_disabled,
-    )
+    best_action, top_scores = _select_action(scores)
     style_modifier = None
     if best_action == "act_respond":
         style_inputs = _build_style_inputs(

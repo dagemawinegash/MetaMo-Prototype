@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from config import STRONG_TASK_PLAN_SIGNAL
 from core.state import ACTION_ACTIVE_FLOOR, ACTION_BLOCKED_SCORE
 from schemas import RoutingInputs
 
@@ -114,7 +115,7 @@ def _apply_search_synthesize_arbitration(
             if scores["act_synthesize"] > ACTION_ACTIVE_FLOOR:
                 scores["act_synthesize"] -= 0.12
         elif (
-            needs_task_plan >= 0.72
+            needs_task_plan >= STRONG_TASK_PLAN_SIGNAL
             and needs_task_plan >= needs_external_evidence + 0.18
             and needs_task_plan >= needs_multi_source_integration + 0.12
         ):
@@ -319,37 +320,8 @@ def _apply_action_arbitration(
     return scores
 
 
-# Tie-break selection
-def _select_action(
-    scores: dict[str, float],
-    *,
-    intent_type: str,
-    low_confidence: float,
-    threshold: float,
-    intent_margin: float,
-    apply_arbitration: bool = True,
-) -> tuple[str, list[tuple[str, float]]]:
-    """Resolve tie-breaks and select the best action."""
-    search_score = float(scores.get("act_search", ACTION_BLOCKED_SCORE))
-    think_score = float(scores.get("act_think", ACTION_BLOCKED_SCORE))
-    if (
-        apply_arbitration
-        and search_score > ACTION_ACTIVE_FLOOR
-        and think_score > ACTION_ACTIVE_FLOOR
-        and abs(search_score - think_score) <= intent_margin
-    ):
-        if intent_type == "reflective":
-            preferred = "act_think"
-        elif intent_type == "factual":
-            preferred = "act_search"
-        else:
-            preferred = (
-                "act_search"
-                if (low_confidence >= 0.40 or threshold >= 0.45)
-                else "act_think"
-            )
-        scores[preferred] = max(search_score, think_score) + intent_margin + 1e-4
-
+def _select_action(scores: dict[str, float]) -> tuple[str, list[tuple[str, float]]]:
+    """Select the highest-scoring action."""
     best_action = max(scores, key=scores.get)
     top_scores = sorted(scores.items(), key=lambda kv: kv[1], reverse=True)[:3]
     return best_action, top_scores

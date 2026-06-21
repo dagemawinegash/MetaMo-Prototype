@@ -64,12 +64,13 @@ python runner.py
 
 `runner.py` instantiates the compiled LangGraph app, replays every scripted session, and prints (1) the chosen action, (2) the contextual signals produced by `parser.parse_context`, (3) the modulators/goals tracked inside the engine, and (4) the text returned by the action node. This is the fastest way to validate changes to `engine.py`, prompt shaping, or the parser contract.
 
+Use `replay_runner.py --source-run <run-directory>` for controlled ablation tests with frozen parser contexts. The live runner only selects the session set; ablation switches belong to the replay runner.
+
 ## Tuning the Engine
 Key knobs live in `engine.init_state()["params"]`:
 - `*_alpha` values control how quickly modulators react to new context.
 - `decompose_*` thresholds guard when decomposition is allowed.
-- `reflective_think_bonus` / `reflective_search_penalty` bias the tie-breaker between `act_think` and `act_search`.
-- `intent_margin` enforces extra separation before switching intent-specific actions.
+- `reflective_think_bonus` / `reflective_search_penalty` adjust reflective action scores.
 
 Adjust these numbers, then re-run `python runner.py` to see how the selected actions and telemetry change over long sessions. The printed diagnostics help you spot oscillations, cold-start behavior, and anti-goal drift.
 

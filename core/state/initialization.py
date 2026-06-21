@@ -68,7 +68,6 @@ def init_state() -> dict:
             "decompose_max_ambiguity": 0.70,
             "reflective_think_bonus": 0.14,
             "reflective_search_penalty": 0.10,
-            "intent_margin": 0.12,
             "enable_homeostasis": True,
             "enable_context_memory": True,
             "context_window_turns": 3,

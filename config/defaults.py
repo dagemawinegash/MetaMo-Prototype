@@ -8,6 +8,8 @@ DEFAULT_ANTI_GOALS = {
     "premature": 0.30,
 }
 
+STRONG_TASK_PLAN_SIGNAL = 0.90
+
 
 DEFAULT_ALPHA_PARAMS = {
     "urgency_alpha": 0.60,

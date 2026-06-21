@@ -7,7 +7,7 @@ import importlib
 import time
 from typing import Any
 
-from config import get_context_parser_system_prompt
+from config import STRONG_TASK_PLAN_SIGNAL, get_context_parser_system_prompt
 from dotenv import load_dotenv
 from pipeline.llm_client import build_chat_llm
 from utils import (
@@ -94,7 +94,11 @@ def _calibrate_action_signals(
     # Keep planning signal conservative when evidence/integration dominates and ambiguity is not extreme.
     if evid >= 0.75 and plan >= 0.65 and amb <= 0.70:
         plan *= 0.70
-    if multi >= 0.70 and plan >= 0.60 and amb <= 0.65:
+    if (
+        multi >= 0.70
+        and 0.60 <= plan < STRONG_TASK_PLAN_SIGNAL
+        and amb <= 0.65
+    ):
         plan *= 0.75
     if evid >= 0.85 and multi >= 0.75 and plan >= 0.60 and amb <= 0.55:
         plan = min(plan, 0.55)
