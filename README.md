@@ -31,7 +31,7 @@ flowchart LR
 
 ## Requirements
 - Python 3.11+
-- `pip install langgraph langchain-core langchain-openai langchain-google-genai langchain langchain-community python-dotenv`
+- `pip install langgraph langchain-core langchain-openai langchain-google-genai langchain langchain-community python-dotenv fastapi "uvicorn[standard]"`
 - API access to at least one provider:
   - **OpenAI** – needs `OPENAI_API_KEY`, optional `OPENAI_MODEL` (defaults to `gpt-4.1-mini`).
   - **Google Gemini** – needs `GEMINI_API_KEY`, optional `GEMINI_MODEL` (defaults to `gemini-3-flash-preview`).
@@ -65,6 +65,29 @@ python runner.py
 `runner.py` instantiates the compiled LangGraph app, replays every scripted session, and prints (1) the chosen action, (2) the contextual signals produced by `parser.parse_context`, (3) the modulators/goals tracked inside the engine, and (4) the text returned by the action node. This is the fastest way to validate changes to `engine.py`, prompt shaping, or the parser contract.
 
 Use `replay_runner.py --source-run <run-directory>` for controlled ablation tests with frozen parser contexts. The live runner only selects the session set; ablation switches belong to the replay runner.
+
+## Running the Recommendation API
+
+The recommendation API is intended for later Qwestor integration. It runs the parser and motivation engine, then returns the recommended action only. It does not return a user-facing answer.
+
+```bash
+python -m uvicorn api.main:app --host 0.0.0.0 --port 8020
+```
+
+Health check:
+
+```bash
+curl http://localhost:8020/health
+```
+
+Recommendation endpoint:
+
+```bash
+curl -X POST http://localhost:8020/recommend-action \
+  -H "Content-Type: application/json" \
+  -d '{"session_id":"demo","query":"Search for recent papers comparing MCMC and variational inference uncertainty quality.","recent_history":[],"project_context":{"research_topic":"MCMC vs VI uncertainty"}}'
+```
+
 
 ## Tuning the Engine
 Key knobs live in `engine.init_state()["params"]`:

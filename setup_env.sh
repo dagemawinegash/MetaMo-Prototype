@@ -27,6 +27,8 @@ fi
     langchain-google-genai \
     langchain \
     langchain-community \
-    python-dotenv
+    python-dotenv \
+    fastapi \
+    "uvicorn[standard]"
 
 echo "Virtual environment ready. Activate it with: source $VENV_DIR/bin/activate"
