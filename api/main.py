@@ -6,6 +6,7 @@ from threading import Lock
 from typing import Any
 from uuid import uuid4
 
+from dotenv import load_dotenv
 from fastapi import FastAPI
 from pydantic import BaseModel, Field
 
@@ -134,6 +135,7 @@ def health() -> dict[str, str]:
 
 @app.post("/recommend-action", response_model=RecommendationResponse)
 def recommend_action(request: RecommendationRequest) -> RecommendationResponse:
+    load_dotenv(override=True)
     request_id = str(uuid4())
     with _lock:
         state = _states.setdefault(request.session_id, init_state())
